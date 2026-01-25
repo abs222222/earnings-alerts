@@ -95,12 +95,12 @@
         "verify": "npm run build",
         "done": "Can fetch data from Google Sheet"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "Created src/sheets.ts with readRawSheetData() function. Reads sheet ID from GOOGLE_SHEET_ID env var, sheet name from SHEET_NAME env var (defaults to 'Earnings'). Uses getSheetsService() from google-auth.ts."
     },
     {
       "id": 6,
@@ -114,12 +114,12 @@
         "verify": "npm run build",
         "done": "Sheet data parsed into typed objects"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "parseRow() and parseDate() functions convert raw sheet data to EarningsReport objects. Handles multiple date formats. parseTimeOfDay() maps time strings to TimeOfDay enum (premarket/postmarket/unknown)."
     },
     {
       "id": 7,
@@ -133,12 +133,12 @@
         "verify": "npm run build",
         "done": "Invalid rows logged and skipped"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "validateRow() checks required fields (ticker, report_date). Logs warnings for missing company names. Invalid rows are logged with [SKIP] prefix and excluded from results. SheetReadResult includes statistics."
     },
     {
       "id": 8,
