@@ -209,12 +209,12 @@
         "verify": "npm run build",
         "done": "Alert dates calculated correctly for all time types"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "determineAlertDate() and determineAlertDateWithOffset() functions. Postmarket=same day morning, premarket/unknown=previous trading day. Uses calendar.ts for trading day calculations."
     },
     {
       "id": 12,
@@ -228,12 +228,12 @@
         "verify": "npm run build",
         "done": "Returns list of reports needing alerts"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "findDueAlerts(reports, today, alertDaysBefore?) filters reports to those due today. findAlertsDueToday() convenience function uses current date. Returns AlertDue[] sorted by report date."
     },
     {
       "id": 13,
@@ -247,12 +247,12 @@
         "verify": "npm run build",
         "done": "Time strings correctly categorized"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "parseTimeOfDay() handles: named (premarket/BMO/AMC/post), time with period (6:00am/4:30pm), 24h format (16:00/0530). categorizeTime() maps hours to pre/post ranges."
     },
     {
       "id": 14,
@@ -266,12 +266,12 @@
         "verify": "npm run build",
         "done": "No duplicate alerts sent"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "loadSentAlerts(), saveSentAlerts(), hasAlertBeenSent(ticker, reportDate), markAlertSent(). Stores in data/sent-alerts.json. filterUnsentAlerts() and cleanupOldAlerts(daysToKeep) utilities included."
     },
     {
       "id": 15,
