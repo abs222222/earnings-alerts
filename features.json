@@ -152,12 +152,12 @@
         "verify": "npm run build",
         "done": "Can query NYSE trading calendar"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": "May need Python subprocess or find JS library"
+      "notes": "Implemented using hardcoded NYSE holidays for 2025-2026. Uses date-fns for date operations. Holidays verified against NYSE official calendar. getNYSEHolidays() exports full list."
     },
     {
       "id": 9,
@@ -171,12 +171,12 @@
         "verify": "npm run build",
         "done": "Function returns true/false for any date"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "isTradingDay(date: Date): boolean - returns false for weekends and NYSE holidays, true otherwise. Uses UTC for timezone consistency."
     },
     {
       "id": 10,
@@ -190,12 +190,12 @@
         "verify": "npm run build",
         "done": "Function counts trading days correctly"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "tradingDaysUntil(from: Date, to: Date): number - counts trading days, supports negative values if to<from. Also added getPreviousTradingDay(), getNextTradingDay(), getTradingDayOnOrBefore(), getTradingDayOnOrAfter(), getTradingDaysInRange()."
     },
     {
       "id": 11,
