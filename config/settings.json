@@ -1,0 +1,13 @@
+{
+  "sheetName": "Earnings",
+  "alertDaysBefore": [5, 1],
+  "preMarketRange": {
+    "start": "05:00",
+    "end": "09:30"
+  },
+  "postMarketRange": {
+    "start": "16:00",
+    "end": "20:00"
+  },
+  "notes": "Alert days before: send alerts X trading days before earnings. Pre/post market ranges in 24h format."
+}

@@ -19,12 +19,12 @@
         "verify": "npm run build",
         "done": "Project compiles with tsc"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "npm install + npm run build verified. dist/ folder created with compiled JS."
     },
     {
       "id": 2,
@@ -38,12 +38,12 @@
         "verify": "cat .env.example",
         "done": ".env.example exists with all required variables"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "Created .env.example with GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS_PATH, SHEET_NAME, LOG_LEVEL. .gitignore already had .env entries."
     },
     {
       "id": 3,
@@ -57,12 +57,12 @@
         "verify": "npm run build",
         "done": "Can authenticate with Google APIs"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": "Reference: ~/projects/trump-etf-tracker/google_utils.py"
+      "notes": "Created src/google-auth.ts with service account + OAuth support. Exports getAuthClient(), getSheetsService(), getGmailService(). Compiles successfully."
     },
     {
       "id": 4,
@@ -76,12 +76,12 @@
         "verify": "ls -la src config data scripts",
         "done": "All directories exist"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "All directories exist. Added config/recipients.json, config/settings.json as placeholder configs."
     },
     {
       "id": 5,

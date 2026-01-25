@@ -1,0 +1,7 @@
+{
+  "recipients": [
+    "user@example.com"
+  ],
+  "enabled": true,
+  "notes": "Add email addresses to receive earnings alerts. Set enabled=false to disable all emails."
+}
