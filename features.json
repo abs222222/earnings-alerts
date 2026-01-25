@@ -285,12 +285,12 @@
         "verify": "npm run build",
         "done": "Can send test email"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": "Reference: ~/projects/trump-etf-tracker/src/email.py"
+      "notes": "sendEmail(to[], subject, htmlBody, dryRun) sends via Gmail API. Uses base64-encoded RFC 2822 messages. Supports dry-run mode. Error handling for auth/permission issues."
     },
     {
       "id": 16,
@@ -304,12 +304,12 @@
         "verify": "npm run build",
         "done": "Email renders nicely with earnings data"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "formatAlertEmail(alerts) returns {subject, html}. Subject like 'Earnings Alert: 5 companies reporting tomorrow'. HTML table with Ticker, Company, Report Date, Time columns. Clean styling with blue header."
     },
     {
       "id": 17,
@@ -323,12 +323,12 @@
         "verify": "cat config/recipients.json",
         "done": "Recipients configurable without code changes"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "getRecipients() loads from config/recipients.json. Supports enabled flag to disable emails. Validates email format. Config already existed with placeholder structure."
     },
     {
       "id": 18,
