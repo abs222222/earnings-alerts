@@ -31,3 +31,15 @@ yarn-error.log*
 
 # Vercel
 .vercel
+
+# Credentials
+credentials.json
+token.json
+*.pem
+
+# Data files (runtime generated)
+data/*.json
+data/*.log
+
+# Logs
+*.log

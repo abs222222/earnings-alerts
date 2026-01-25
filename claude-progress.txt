@@ -1,0 +1,16 @@
+# earnings-alerts - Progress Log
+
+## Session 1 - 2026-01-25
+
+### Started
+- Project initialized with agent harness
+- 22 features defined across 7 categories
+
+### Completed
+- (none yet)
+
+### Notes
+- Ready to begin with setup features (1-4)
+- Reference trump-etf for Google auth and Gmail patterns
+
+---

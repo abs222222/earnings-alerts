@@ -1,0 +1,28 @@
+{
+  "current_session": {
+    "id": 1,
+    "started_at": null,
+    "features_complete_at_session_start": 0,
+    "turns_this_session": 0,
+    "retries_current_task": 0,
+    "current_task": null,
+    "termination_reason": null,
+    "verify_attempts": 0,
+    "last_completed_feature": null,
+    "awaiting_learnings": false
+  },
+  "thresholds": {
+    "max_features_per_session": 5,
+    "max_turns_per_session": 60,
+    "max_retries_same_task": 3,
+    "max_duration_minutes": 60
+  },
+  "circuit_breaker": {
+    "consecutive_failures": 0,
+    "max_failures": 5,
+    "tripped": false,
+    "tripped_at": null,
+    "last_failure_reason": null
+  },
+  "history": []
+}

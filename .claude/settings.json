@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "stop": [
+      {
+        "command": "node .claude/hooks/stop-continue.js",
+        "description": "Auto-continue with next task or terminate session"
+      }
+    ]
+  }
+}
