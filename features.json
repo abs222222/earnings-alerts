@@ -342,12 +342,12 @@
         "verify": "npx ts-node src/main.ts --help",
         "done": "CLI args working"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "CLI implemented with commander package. Options: --check-trading-day, --dry-run, -v/--verbose. Help output verified. Trading day check correctly identifies weekends."
     },
     {
       "id": 19,
@@ -361,12 +361,12 @@
         "verify": "npx ts-node src/main.ts --dry-run",
         "done": "End-to-end flow works"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "Full orchestration implemented: 1) Trading day check, 2) Read Google Sheet, 3) Find due alerts, 4) Filter unsent, 5) Send email (or dry-run), 6) Mark alerts sent. Progress logging at each step with summary."
     },
     {
       "id": 20,
@@ -380,12 +380,12 @@
         "verify": "cat scripts/setup_tasks.bat",
         "done": "Task scheduler scripts ready"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": "Reference: ~/projects/trump-etf-tracker/setup_tasks.bat"
+      "notes": "Created setup_tasks.bat and setup_tasks.ps1. Both schedule 'Earnings Alerts - Daily Check' task at 6am. PS1 version supports -Remove flag and custom -Time parameter."
     },
     {
       "id": 21,
@@ -399,12 +399,12 @@
         "verify": "cat .github/workflows/daily-check.yml",
         "done": "Workflow file valid"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": ""
+      "notes": "Created workflow with cron at 11:00 UTC (6am EST) weekdays. Supports workflow_dispatch with dry_run input. Uses GOOGLE_CREDENTIALS and GOOGLE_SHEET_ID secrets."
     },
     {
       "id": 22,
@@ -418,12 +418,12 @@
         "verify": "cat scripts/run.bat",
         "done": "Run script with logging ready"
       },
-      "status": "pending",
-      "test_status": null,
-      "test_method": null,
-      "last_tested": null,
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
       "commits": [],
-      "notes": "Reference: ~/projects/trump-etf-tracker/run.bat"
+      "notes": "Created run.bat with date-stamped logging to data/run_YYYYMMDD.log. Logs start/end times and exit codes. Passes through arguments to npm run check."
     }
   ]
 }
