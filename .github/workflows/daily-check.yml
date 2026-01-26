@@ -27,10 +27,13 @@ jobs:
         run: npm ci
 
       - name: Setup Google credentials
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
         run: |
           mkdir -p ~/.claude/code-executor
-          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > ~/.claude/code-executor/google_credentials.json
-          echo '${{ secrets.GOOGLE_TOKEN }}' > ~/.claude/code-executor/google_token.json
+          printenv GOOGLE_CREDENTIALS > ~/.claude/code-executor/google_credentials.json
+          printenv GOOGLE_TOKEN > ~/.claude/code-executor/google_token.json
 
       - name: Run earnings check
         run: npm run check
