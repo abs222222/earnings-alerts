@@ -5,6 +5,7 @@
  * - Send emails via Gmail API (Feature 15)
  * - HTML email template with earnings table (Feature 16)
  * - Recipient config loading (Feature 17)
+ * - Two-section email: Holdings (priority) + Watchlist (Feature 26)
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -98,7 +99,7 @@ function formatTimeOfDay(timeOfDay: TimeOfDay): string {
 /**
  * Generate HTML table rows for alerts
  */
-function generateTableRows(alerts: AlertDue[]): string {
+function generateTableRows(alerts: AlertDue[], accentColor = '#1976d2'): string {
   return alerts
     .map((alert) => {
       const { report, daysUntilReport } = alert;
@@ -106,7 +107,7 @@ function generateTableRows(alerts: AlertDue[]): string {
 
       return `
         <tr class="${urgencyClass}">
-          <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; font-weight: bold; color: #1976d2;">
+          <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; font-weight: bold; color: ${accentColor};">
             ${escapeHtml(report.ticker)}
           </td>
           <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">
@@ -136,27 +137,22 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Format alert data into HTML email
- *
- * @param alerts - Array of alerts due
- * @returns Object with subject and html body
+ * Generate subject line based on holdings and watchlist counts
  */
-export function formatAlertEmail(alerts: AlertDue[]): { subject: string; html: string } {
-  if (alerts.length === 0) {
-    return {
-      subject: 'Earnings Alert: No companies reporting soon',
-      html: '<p>No earnings reports are scheduled for alerts today.</p>',
-    };
-  }
-
-  // Generate subject line
-  const count = alerts.length;
-  const companyText = count === 1 ? 'company' : 'companies';
-
+function generateSubjectLine(
+  holdingsCount: number,
+  watchlistCount: number,
+  allAlerts: AlertDue[]
+): string {
   // Find the earliest report date for context
-  const sortedAlerts = [...alerts].sort(
+  const sortedAlerts = [...allAlerts].sort(
     (a, b) => a.report.reportDate.getTime() - b.report.reportDate.getTime()
   );
+
+  if (sortedAlerts.length === 0) {
+    return 'Earnings Alert: No companies reporting soon';
+  }
+
   const nextReport = sortedAlerts[0];
   const daysText =
     nextReport.daysUntilReport === 0
@@ -165,11 +161,157 @@ export function formatAlertEmail(alerts: AlertDue[]): { subject: string; html: s
         ? 'tomorrow'
         : `in ${nextReport.daysUntilReport} days`;
 
-  const subject = `Earnings Alert: ${count} ${companyText} reporting ${daysText}`;
+  // Generate subject based on what we have
+  if (holdingsCount > 0 && watchlistCount > 0) {
+    const holdingsText = holdingsCount === 1 ? 'holding' : 'holdings';
+    const watchlistText = watchlistCount === 1 ? 'watchlist ticker' : 'watchlist tickers';
+    return `Earnings Alert: ${holdingsCount} ${holdingsText} + ${watchlistCount} ${watchlistText} reporting ${daysText}`;
+  } else if (holdingsCount > 0) {
+    const holdingsText = holdingsCount === 1 ? 'holding' : 'holdings';
+    return `Earnings Alert: ${holdingsCount} ${holdingsText} reporting ${daysText}`;
+  } else if (watchlistCount > 0) {
+    const watchlistText = watchlistCount === 1 ? 'watchlist ticker' : 'watchlist tickers';
+    return `Earnings Alert: ${watchlistCount} ${watchlistText} reporting ${daysText}`;
+  }
+
+  return 'Earnings Alert: No companies reporting soon';
+}
+
+/**
+ * Generate a section with header and table for alerts
+ */
+function generateSection(
+  title: string,
+  alerts: AlertDue[],
+  accentColor: string,
+  headerGradient: string
+): string {
+  if (alerts.length === 0) {
+    return '';
+  }
+
+  const sortedAlerts = [...alerts].sort(
+    (a, b) => a.report.reportDate.getTime() - b.report.reportDate.getTime()
+  );
+
+  const tableRows = generateTableRows(sortedAlerts, accentColor);
+
+  return `
+    <div style="margin-bottom: 24px;">
+      <div style="background: ${headerGradient}; color: white; padding: 12px 16px; border-radius: 4px 4px 0 0;">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0.5px;">${title}</h2>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 0 0 4px 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <thead>
+          <tr style="background: #f5f5f5;">
+            <th style="padding: 12px; text-align: left; border-bottom: 2px solid ${accentColor}; font-weight: 600;">Ticker</th>
+            <th style="padding: 12px; text-align: left; border-bottom: 2px solid ${accentColor}; font-weight: 600;">Company</th>
+            <th style="padding: 12px; text-align: left; border-bottom: 2px solid ${accentColor}; font-weight: 600;">Report Date</th>
+            <th style="padding: 12px; text-align: left; border-bottom: 2px solid ${accentColor}; font-weight: 600;">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/**
+ * Alert sections for the 4-section email
+ */
+export interface AlertSections {
+  holdingsNextDay: AlertDue[];      // Holdings reporting tomorrow
+  holdingsUpcoming: AlertDue[];     // Holdings reporting in 2-5 trading days
+  watchlistNextDay: AlertDue[];     // Watchlist reporting tomorrow
+  watchlistUpcoming: AlertDue[];    // Watchlist reporting in 2-3 trading days
+}
+
+/**
+ * Format alert data into HTML email with four sections
+ *
+ * @param sections - Object containing 4 arrays of alerts
+ * @returns Object with subject and html body
+ */
+export function formatAlertEmail(
+  sections: AlertSections
+): { subject: string; html: string } {
+  const {
+    holdingsNextDay,
+    holdingsUpcoming,
+    watchlistNextDay,
+    watchlistUpcoming,
+  } = sections;
+
+  const totalCount =
+    holdingsNextDay.length +
+    holdingsUpcoming.length +
+    watchlistNextDay.length +
+    watchlistUpcoming.length;
+
+  if (totalCount === 0) {
+    return {
+      subject: 'Earnings Alert: No companies reporting soon',
+      html: '<p>No earnings reports are scheduled for alerts.</p>',
+    };
+  }
+
+  // Generate subject line based on next-day alerts (most urgent)
+  const nextDayHoldings = holdingsNextDay.length;
+  const nextDayWatchlist = watchlistNextDay.length;
+  const upcomingHoldings = holdingsUpcoming.length;
+  const upcomingWatchlist = watchlistUpcoming.length;
+
+  let subject = 'Earnings Alert: ';
+  const parts: string[] = [];
+
+  if (nextDayHoldings > 0) {
+    parts.push(`${nextDayHoldings} holding${nextDayHoldings > 1 ? 's' : ''} tomorrow`);
+  }
+  if (nextDayWatchlist > 0) {
+    parts.push(`${nextDayWatchlist} watchlist tomorrow`);
+  }
+  if (upcomingHoldings > 0) {
+    parts.push(`${upcomingHoldings} holding${upcomingHoldings > 1 ? 's' : ''} upcoming`);
+  }
+  if (upcomingWatchlist > 0) {
+    parts.push(`${upcomingWatchlist} watchlist upcoming`);
+  }
+
+  subject += parts.join(', ');
 
   // Generate HTML body
   const today = format(new Date(), 'EEEE, MMMM d, yyyy');
-  const tableRows = generateTableRows(sortedAlerts);
+
+  // Generate sections with different colors
+  const holdingsNextDaySection = generateSection(
+    '🔔 HOLDINGS - REPORTING TOMORROW',
+    holdingsNextDay,
+    '#c41e3a', // Dark red for urgent
+    'linear-gradient(135deg, #c41e3a 0%, #8b0000 100%)'
+  );
+
+  const holdingsUpcomingSection = generateSection(
+    '📅 HOLDINGS - NEXT 5 TRADING DAYS',
+    holdingsUpcoming,
+    '#d4a017', // Gold
+    'linear-gradient(135deg, #d4a017 0%, #b8860b 100%)'
+  );
+
+  const watchlistNextDaySection = generateSection(
+    '🔔 WATCHLIST - REPORTING TOMORROW',
+    watchlistNextDay,
+    '#1976d2', // Blue
+    'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)'
+  );
+
+  const watchlistUpcomingSection = generateSection(
+    '📅 WATCHLIST - NEXT 3 TRADING DAYS',
+    watchlistUpcoming,
+    '#5c6bc0', // Indigo
+    'linear-gradient(135deg, #5c6bc0 0%, #3f51b5 100%)'
+  );
 
   const html = `
 <!DOCTYPE html>
@@ -181,39 +323,24 @@ export function formatAlertEmail(alerts: AlertDue[]): { subject: string; html: s
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
 
-  <div style="background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
-    <h1 style="margin: 0; font-size: 24px; font-weight: 600;">Earnings Alert</h1>
+  <div style="background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+    <h1 style="margin: 0; font-size: 24px; font-weight: 600;">📊 Earnings Alert</h1>
     <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">${today}</p>
   </div>
 
   <div style="background: #f8f9fa; padding: 20px; border: 1px solid #e0e0e0; border-top: none;">
-    <p style="margin: 0 0 16px 0; font-size: 16px;">
-      <strong>${count}</strong> ${companyText} ${count === 1 ? 'has' : 'have'} upcoming earnings reports:
-    </p>
-
-    <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-      <thead>
-        <tr style="background: #f5f5f5;">
-          <th style="padding: 12px; text-align: left; border-bottom: 2px solid #1976d2; font-weight: 600;">Ticker</th>
-          <th style="padding: 12px; text-align: left; border-bottom: 2px solid #1976d2; font-weight: 600;">Company</th>
-          <th style="padding: 12px; text-align: left; border-bottom: 2px solid #1976d2; font-weight: 600;">Report Date</th>
-          <th style="padding: 12px; text-align: left; border-bottom: 2px solid #1976d2; font-weight: 600;">Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tableRows}
-      </tbody>
-    </table>
+    ${holdingsNextDaySection}
+    ${holdingsUpcomingSection}
+    ${watchlistNextDaySection}
+    ${watchlistUpcomingSection}
 
     <p style="margin: 16px 0 0 0; font-size: 13px; color: #666;">
-      <strong>Note:</strong> Pre-market reports are typically released between 5:00 AM - 9:30 AM ET.
-      Post-market reports are released between 4:00 PM - 8:00 PM ET.
+      <strong>Note:</strong> Pre-market reports: 5:00 AM - 9:30 AM ET. Post-market: 4:00 PM - 8:00 PM ET.
     </p>
   </div>
 
   <div style="padding: 16px; text-align: center; font-size: 12px; color: #999;">
-    <p style="margin: 0;">This is an automated alert from Earnings Alerts.</p>
-    <p style="margin: 4px 0 0 0;">Data sourced from Google Sheets.</p>
+    <p style="margin: 0;">Automated alert from Earnings Alerts</p>
   </div>
 
 </body>
@@ -346,16 +473,16 @@ export async function sendEmail(
 }
 
 /**
- * Send earnings alert email
+ * Send earnings alert email with four sections
  *
  * Convenience function that combines formatAlertEmail and sendEmail
  *
- * @param alerts - Array of alerts due
+ * @param sections - Object containing 4 arrays of alerts
  * @param dryRun - If true, don't actually send
  * @returns true if email was sent successfully
  */
 export async function sendAlertEmail(
-  alerts: AlertDue[],
+  sections: AlertSections,
   dryRun = false
 ): Promise<boolean> {
   // Get recipients
@@ -366,7 +493,7 @@ export async function sendAlertEmail(
   }
 
   // Format email
-  const { subject, html } = formatAlertEmail(alerts);
+  const { subject, html } = formatAlertEmail(sections);
 
   // Send
   return sendEmail(recipients, subject, html, dryRun);

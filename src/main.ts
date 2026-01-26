@@ -7,6 +7,7 @@
  * Features:
  * - Feature 18: CLI with --check-trading-day, --dry-run, --verbose
  * - Feature 19: Daily check orchestration
+ * - Feature 27: Holdings priority - integrates holdings from email
  */
 
 import { Command } from 'commander';
@@ -18,10 +19,12 @@ dotenv.config();
 
 // Import modules
 import { isTradingDay } from './calendar';
-import { getEarningsReports } from './sheets';
+import { getHoldingsFromEmail } from './holdings-email';
+import { getWatchlistTickers, getEarningsReports } from './sheets';
 import { findDueAlerts, filterUnsentAlerts, markAlertSent } from './alerts';
-import { sendAlertEmail, formatAlertEmail, getRecipients } from './email';
-import { CliOptions } from './types';
+import { sendAlertEmail, formatAlertEmail, getRecipients, AlertSections } from './email';
+import { CliOptions, EarningsReport, AlertDue } from './types';
+import { tradingDaysUntil, getNextTradingDay } from './calendar';
 
 // ============================================================================
 // CLI Setup (Feature 18)
@@ -77,7 +80,7 @@ function logError(message: string): void {
 }
 
 // ============================================================================
-// Daily Check Orchestration (Feature 19)
+// Daily Check Orchestration (Feature 19, updated with Feature 27)
 // ============================================================================
 
 async function runDailyCheck(): Promise<void> {
@@ -115,9 +118,49 @@ async function runDailyCheck(): Promise<void> {
   }
 
   // -------------------------------------------------------------------------
-  // Step 2: Read Google Sheet
+  // Step 2: Get holdings from email (Feature 27)
   // -------------------------------------------------------------------------
-  logStep(2, 'Reading earnings data from Google Sheet...');
+  logStep(2, 'Getting holdings from email...');
+
+  let holdingsTickers: string[] = [];
+  try {
+    holdingsTickers = await getHoldingsFromEmail();
+    logSuccess(`Found ${holdingsTickers.length} holdings`);
+
+    if (options.verbose && holdingsTickers.length > 0) {
+      logVerbose(`Holdings: ${holdingsTickers.slice(0, 10).join(', ')}${holdingsTickers.length > 10 ? '...' : ''}`);
+    }
+  } catch (error: any) {
+    logError(`Failed to get holdings from email: ${error.message}`);
+    logInfo('Continuing without holdings data...');
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 3: Get watchlist tickers from sheet (Feature 27)
+  // -------------------------------------------------------------------------
+  logStep(3, 'Getting watchlist tickers...');
+
+  let watchlistTickers: string[] = [];
+  try {
+    watchlistTickers = await getWatchlistTickers();
+    logSuccess(`Found ${watchlistTickers.length} watchlist tickers`);
+
+    if (options.verbose && watchlistTickers.length > 0) {
+      logVerbose(`Watchlist: ${watchlistTickers.slice(0, 10).join(', ')}${watchlistTickers.length > 10 ? '...' : ''}`);
+    }
+  } catch (error: any) {
+    logError(`Failed to get watchlist: ${error.message}`);
+    logInfo('Continuing without watchlist filter...');
+  }
+
+  // Combine tickers for filtering (holdings always included)
+  const allTickersOfInterest = new Set([...holdingsTickers, ...watchlistTickers]);
+  logInfo(`Total tickers of interest: ${allTickersOfInterest.size}`);
+
+  // -------------------------------------------------------------------------
+  // Step 4: Read Google Sheet (all earnings reports)
+  // -------------------------------------------------------------------------
+  logStep(4, 'Reading earnings data from Google Sheet...');
 
   let reports;
   try {
@@ -143,72 +186,157 @@ async function runDailyCheck(): Promise<void> {
     return;
   }
 
-  // -------------------------------------------------------------------------
-  // Step 3: Find due alerts
-  // -------------------------------------------------------------------------
-  logStep(3, 'Finding alerts due today...');
+  // Filter earnings reports to only tickers of interest (Feature 27)
+  const filteredReports =
+    allTickersOfInterest.size > 0
+      ? reports.filter((r) => allTickersOfInterest.has(r.ticker.toUpperCase()))
+      : reports;
 
-  const dueAlerts = findDueAlerts(reports, today);
-  logSuccess(`Found ${dueAlerts.length} alert(s) due today`);
+  logInfo(`Filtered to ${filteredReports.length} reports matching holdings/watchlist`);
 
-  if (options.verbose && dueAlerts.length > 0) {
-    logVerbose('Due alerts:');
-    dueAlerts.forEach((alert) => {
-      logVerbose(
-        `  ${alert.report.ticker} - reports ${alert.reportDateFormatted} (${alert.daysUntilReport} day(s) away)`
-      );
-    });
+  // -------------------------------------------------------------------------
+  // Step 5: Calculate alerts for all 4 sections
+  // -------------------------------------------------------------------------
+  logStep(5, 'Calculating alerts for all sections...');
+
+  const holdingsSet = new Set(holdingsTickers.map((t) => t.toUpperCase()));
+
+  // Helper to create AlertDue from report
+  function createAlertDue(report: EarningsReport): AlertDue {
+    const daysUntil = tradingDaysUntil(today, report.reportDate);
+    return {
+      report,
+      alertDate: today,
+      reportDateFormatted: format(report.reportDate, 'EEE, MMM d'),
+      daysUntilReport: daysUntil,
+    };
   }
 
-  if (dueAlerts.length === 0) {
-    logInfo('No alerts due today. Nothing to send.');
-    return;
+  // Helper to determine if report alerts "tomorrow" (next trading day)
+  // Based on time of day: postmarket = same day alert, premarket/unknown = day before alert
+  function isNextDayAlert(report: EarningsReport): boolean {
+    const nextTradingDay = getNextTradingDay(today);
+    const reportDate = report.reportDate;
+    const reportDateStr = format(reportDate, 'yyyy-MM-dd');
+    const nextTradingDayStr = format(nextTradingDay, 'yyyy-MM-dd');
+    const dayAfterNext = getNextTradingDay(nextTradingDay);
+    const dayAfterNextStr = format(dayAfterNext, 'yyyy-MM-dd');
+
+    // Postmarket on next trading day = alert tomorrow (next trading day morning)
+    if (reportDateStr === nextTradingDayStr && report.timeOfDay === 'postmarket') {
+      return true;
+    }
+    // Premarket/unknown on day after next = alert tomorrow (day before report)
+    if (reportDateStr === dayAfterNextStr && report.timeOfDay !== 'postmarket') {
+      return true;
+    }
+    return false;
   }
 
-  // -------------------------------------------------------------------------
-  // Step 4: Filter unsent alerts
-  // -------------------------------------------------------------------------
-  logStep(4, 'Filtering out already-sent alerts...');
-
-  const unsentAlerts = filterUnsentAlerts(dueAlerts);
-  logSuccess(`${unsentAlerts.length} unsent alert(s) remain`);
-
-  if (unsentAlerts.length === 0) {
-    logInfo('All due alerts have already been sent. Nothing to do.');
-    return;
+  // Helper to get trading days until report (for determining upcoming window)
+  function getTradingDaysToReport(report: EarningsReport): number {
+    return tradingDaysUntil(today, report.reportDate);
   }
 
-  if (options.verbose && unsentAlerts.length > 0) {
-    logVerbose('Unsent alerts:');
-    unsentAlerts.forEach((alert) => {
-      logVerbose(`  ${alert.report.ticker} - ${alert.report.company}`);
-    });
-  }
+  // Separate reports into holdings vs watchlist
+  const holdingsReports = filteredReports.filter((r) => holdingsSet.has(r.ticker.toUpperCase()));
+  const watchlistReports = filteredReports.filter((r) => !holdingsSet.has(r.ticker.toUpperCase()));
 
-  // -------------------------------------------------------------------------
-  // Step 5: Send email (or dry-run)
-  // -------------------------------------------------------------------------
-  logStep(5, options.dryRun ? 'Preparing email (dry run)...' : 'Sending email...');
+  // Section 1: Holdings - Next Day
+  const holdingsNextDay = holdingsReports
+    .filter(isNextDayAlert)
+    .map(createAlertDue);
 
-  // Show email preview in verbose mode
-  if (options.verbose || options.dryRun) {
-    const { subject, html } = formatAlertEmail(unsentAlerts);
-    log(`\n  Subject: ${subject}`);
-    log(`  Recipients: ${getRecipients().join(', ') || '(none configured)'}`);
-    log(`  Alerts included: ${unsentAlerts.length}`);
+  // Section 2: Holdings - Next 5 trading days (excluding next day)
+  const holdingsNextDayTickers = new Set(holdingsNextDay.map((a) => a.report.ticker));
+  const holdingsUpcoming = holdingsReports
+    .filter((r) => {
+      if (holdingsNextDayTickers.has(r.ticker)) return false; // Exclude next day
+      const days = getTradingDaysToReport(r);
+      return days >= 1 && days <= 5; // 2-5 trading days (1 = tomorrow already handled)
+    })
+    .map(createAlertDue);
 
-    if (options.dryRun) {
-      // Show a summary of what would be sent
-      log('\n  Companies in alert:');
-      unsentAlerts.forEach((alert) => {
-        log(`    - ${alert.report.ticker}: ${alert.report.company} (${alert.report.timeOfDay})`);
+  // Section 3: Watchlist - Next Day
+  const watchlistNextDay = watchlistReports
+    .filter(isNextDayAlert)
+    .map(createAlertDue);
+
+  // Section 4: Watchlist - Next 3 trading days (excluding next day)
+  const watchlistNextDayTickers = new Set(watchlistNextDay.map((a) => a.report.ticker));
+  const watchlistUpcoming = watchlistReports
+    .filter((r) => {
+      if (watchlistNextDayTickers.has(r.ticker)) return false; // Exclude next day
+      const days = getTradingDaysToReport(r);
+      return days >= 1 && days <= 3; // 2-3 trading days
+    })
+    .map(createAlertDue);
+
+  logSuccess(`Holdings next day: ${holdingsNextDay.length}, upcoming: ${holdingsUpcoming.length}`);
+  logSuccess(`Watchlist next day: ${watchlistNextDay.length}, upcoming: ${watchlistUpcoming.length}`);
+
+  if (options.verbose) {
+    if (holdingsNextDay.length > 0) {
+      logVerbose('Holdings - Next Day:');
+      holdingsNextDay.forEach((alert) => {
+        logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
+      });
+    }
+    if (holdingsUpcoming.length > 0) {
+      logVerbose('Holdings - Upcoming (2-5 days):');
+      holdingsUpcoming.forEach((alert) => {
+        logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
+      });
+    }
+    if (watchlistNextDay.length > 0) {
+      logVerbose('Watchlist - Next Day:');
+      watchlistNextDay.forEach((alert) => {
+        logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
+      });
+    }
+    if (watchlistUpcoming.length > 0) {
+      logVerbose('Watchlist - Upcoming (2-3 days):');
+      watchlistUpcoming.forEach((alert) => {
+        logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
       });
     }
   }
 
+  // Check if there's anything to send
+  const totalAlerts = holdingsNextDay.length + holdingsUpcoming.length +
+                      watchlistNextDay.length + watchlistUpcoming.length;
+
+  if (totalAlerts === 0) {
+    logInfo('No alerts in any section. Nothing to send.');
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 6: Send email (or dry-run)
+  // -------------------------------------------------------------------------
+  logStep(6, options.dryRun ? 'Preparing email (dry run)...' : 'Sending email...');
+
+  const alertSections: AlertSections = {
+    holdingsNextDay,
+    holdingsUpcoming,
+    watchlistNextDay,
+    watchlistUpcoming,
+  };
+
+  // Show email preview in verbose mode or dry run
+  if (options.verbose || options.dryRun) {
+    const { subject } = formatAlertEmail(alertSections);
+    log(`\n  Subject: ${subject}`);
+    log(`  Recipients: ${getRecipients().join(', ') || '(none configured)'}`);
+    log(`  Holdings next day: ${holdingsNextDay.length}`);
+    log(`  Holdings upcoming: ${holdingsUpcoming.length}`);
+    log(`  Watchlist next day: ${watchlistNextDay.length}`);
+    log(`  Watchlist upcoming: ${watchlistUpcoming.length}`);
+  }
+
   let emailSent: boolean;
   try {
-    emailSent = await sendAlertEmail(unsentAlerts, options.dryRun);
+    emailSent = await sendAlertEmail(alertSections, options.dryRun);
 
     if (options.dryRun) {
       logSuccess('Dry run complete. Email would have been sent.');
@@ -223,19 +351,20 @@ async function runDailyCheck(): Promise<void> {
   }
 
   // -------------------------------------------------------------------------
-  // Step 6: Mark alerts as sent (skip in dry-run mode)
+  // Step 7: Mark next-day alerts as sent (skip in dry-run mode)
   // -------------------------------------------------------------------------
-  if (!options.dryRun && emailSent) {
-    logStep(6, 'Marking alerts as sent...');
+  const nextDayAlerts = [...holdingsNextDay, ...watchlistNextDay];
+  if (!options.dryRun && emailSent && nextDayAlerts.length > 0) {
+    logStep(7, 'Marking next-day alerts as sent...');
 
-    for (const alert of unsentAlerts) {
+    for (const alert of nextDayAlerts) {
       markAlertSent(alert.report.ticker, alert.report.reportDate);
       logVerbose(`Marked as sent: ${alert.report.ticker}`);
     }
 
-    logSuccess(`Marked ${unsentAlerts.length} alert(s) as sent`);
+    logSuccess(`Marked ${nextDayAlerts.length} next-day alert(s) as sent`);
   } else if (options.dryRun) {
-    logStep(6, 'Skipping mark-as-sent (dry run mode)');
+    logStep(7, 'Skipping mark-as-sent (dry run mode)');
   }
 
   // -------------------------------------------------------------------------
@@ -244,9 +373,15 @@ async function runDailyCheck(): Promise<void> {
   log('\n========================================');
   log('Summary');
   log('========================================');
+  log(`Holdings tickers: ${holdingsTickers.length}`);
+  log(`Watchlist tickers: ${watchlistTickers.length}`);
   log(`Total reports in sheet: ${reports.length}`);
-  log(`Alerts due today: ${dueAlerts.length}`);
-  log(`New alerts sent: ${options.dryRun ? '0 (dry run)' : unsentAlerts.length}`);
+  log(`Filtered reports (of interest): ${filteredReports.length}`);
+  log('');
+  log(`Holdings - Next Day: ${holdingsNextDay.length}`);
+  log(`Holdings - Upcoming (2-5 days): ${holdingsUpcoming.length}`);
+  log(`Watchlist - Next Day: ${watchlistNextDay.length}`);
+  log(`Watchlist - Upcoming (2-3 days): ${watchlistUpcoming.length}`);
   log('========================================');
 }
 

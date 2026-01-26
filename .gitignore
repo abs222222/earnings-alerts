@@ -33,9 +33,12 @@ yarn-error.log*
 .vercel
 
 # Credentials
+credentials/
 credentials.json
 token.json
 *.pem
+google_credentials.json
+google_token.json
 
 # Data files (runtime generated)
 data/*.json

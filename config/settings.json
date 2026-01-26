@@ -1,4 +1,14 @@
 {
+  "sheets": {
+    "earnings": {
+      "id": "1bazAGT25QjbzpjjMFCDb0borvqzkTxoVKuU5C_HfcXo",
+      "watchlistTab": "Tickers for email"
+    }
+  },
+  "holdingsEmail": {
+    "sender": "USBFS.EOS@usbank.com",
+    "filename": "Holdings Report.csv"
+  },
   "sheetName": "Earnings",
   "alertDaysBefore": [5, 1],
   "preMarketRange": {
@@ -9,5 +19,5 @@
     "start": "16:00",
     "end": "20:00"
   },
-  "notes": "Alert days before: send alerts X trading days before earnings. Pre/post market ranges in 24h format."
+  "notes": "Sheet IDs can be overridden via GOOGLE_SHEET_ID and HOLDINGS_SHEET_ID env vars. Alert days before: send alerts X trading days before earnings. Pre/post market ranges in 24h format."
 }

@@ -424,6 +424,120 @@
       "last_tested": "2026-01-25",
       "commits": [],
       "notes": "Created run.bat with date-stamped logging to data/run_YYYYMMDD.log. Logs start/end times and exit codes. Passes through arguments to npm run check."
+    },
+    {
+      "id": 23,
+      "name": "auto-select-date-tab",
+      "description": "Parse tab names to find latest date-named tab (e.g., '2026-01-25')",
+      "category": "data",
+      "priority": 2,
+      "task": {
+        "files": ["src/sheets.ts"],
+        "action": "List all tabs, filter to date-named ones (YYYY-MM-DD format), select most recent. Use this as default tab for earnings data.",
+        "verify": "npm run build",
+        "done": "Automatically selects latest date tab when SHEET_NAME not specified"
+      },
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
+      "commits": [],
+      "notes": "Added listSheetTabs(), findLatestDateTab(), getLatestEarningsTab(). Updated getSheetName() to auto-detect when SHEET_NAME env var not set. Falls back to 'Earnings' if no date tabs found."
+    },
+    {
+      "id": 24,
+      "name": "read-ticker-filter",
+      "description": "Read 'Tickers for email' tab as watchlist filter (~50 tickers)",
+      "category": "data",
+      "priority": 2,
+      "task": {
+        "files": ["src/sheets.ts"],
+        "action": "Read 'Tickers for email' tab, return list of ticker symbols. Use this to filter earnings from 2000+ tickers to ~50 of interest.",
+        "verify": "npm run build",
+        "done": "Can load ticker watchlist from dedicated tab"
+      },
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
+      "commits": [],
+      "notes": "Added getWatchlistTickers() function. Reads 'Tickers for email!A:A', returns unique uppercase tickers. Skips header row ('TICKER'), handles empty tab gracefully."
+    },
+    {
+      "id": 25,
+      "name": "read-holdings",
+      "description": "Read current portfolio holdings from Gmail email attachment",
+      "category": "data",
+      "priority": 2,
+      "task": {
+        "files": ["src/holdings-email.ts"],
+        "action": "Read holdings from USBFS.EOS@usbank.com email attachment (Holdings Report.csv). Extract StockTicker column. Return unique list of held tickers.",
+        "verify": "npm run build",
+        "done": "Can load current holdings from Gmail attachment"
+      },
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
+      "commits": [],
+      "notes": "Email-based implementation. Sender: USBFS.EOS@usbank.com. Attachment: Holdings Report.csv (~7pm daily). CSV columns: Date,Account,StockTicker,CUSIP,SecurityName. Functions: searchHoldingsEmail(), downloadHoldingsAttachment(), parseHoldingsCSV(), getHoldingsFromEmail(). Searches last 3 days, uses most recent valid email."
+    },
+    {
+      "id": 26,
+      "name": "two-section-email",
+      "description": "Email with Holdings section (top) + Watchlist section",
+      "category": "email",
+      "priority": 3,
+      "task": {
+        "files": ["src/email.ts", "src/types.ts"],
+        "action": "Update email template to have two sections: HOLDINGS EARNINGS (Priority) at top, WATCHLIST EARNINGS below. Different styling for each.",
+        "verify": "npm run build",
+        "done": "Email shows holdings and watchlist as separate sections"
+      },
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
+      "commits": [],
+      "notes": "formatAlertEmail(holdingsAlerts, watchlistAlerts) takes two arrays. Holdings section has gold/yellow accent (#d4a017), watchlist has blue (#1976d2). Subject format: 'Earnings Alert: 3 holdings + 5 watchlist tickers reporting'. sendAlertEmail() updated to match new signature."
+    },
+    {
+      "id": 27,
+      "name": "holdings-priority",
+      "description": "Include holdings tickers even if not in watchlist",
+      "category": "alerts",
+      "priority": 3,
+      "task": {
+        "files": ["src/alerts.ts", "src/main.ts"],
+        "action": "When filtering earnings, always include tickers that are in holdings, even if not in watchlist. Holdings get priority section in email.",
+        "verify": "npm run build",
+        "done": "Holdings tickers always included in alerts"
+      },
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
+      "commits": [],
+      "notes": "Updated main.ts to: 1) Get holdings from email via getHoldingsFromEmail(), 2) Get watchlist via getWatchlistTickers(), 3) Combine into allTickersOfInterest Set (holdings always included), 4) Filter reports to only tickers of interest, 5) Split due alerts into holdingsAlerts vs watchlistAlerts, 6) Call sendAlertEmail(holdingsAlerts, watchlistAlerts, dryRun). Summary shows both counts."
+    },
+    {
+      "id": 28,
+      "name": "update-sheet-config",
+      "description": "Store both sheet IDs in config (earnings + holdings)",
+      "category": "setup",
+      "priority": 1,
+      "task": {
+        "files": [".env.example", "config/settings.json", "src/sheets.ts"],
+        "action": "Add HOLDINGS_SHEET_ID to .env. Update config/settings.json with both sheet IDs. Update sheets.ts to use both.",
+        "verify": "npm run build",
+        "done": "Both sheet IDs configurable"
+      },
+      "status": "complete",
+      "test_status": "passed",
+      "test_method": "manual",
+      "last_tested": "2026-01-25",
+      "commits": [],
+      "notes": "Simplified: only earnings sheet ID configured (holdings come from email). Updated .env.example with earnings sheet ID and holdings email config. Updated settings.json with sheets.earnings (id, watchlistTab) and holdingsEmail (sender, filename). getEarningsSheetId() helper uses env var or config."
     }
   ]
 }

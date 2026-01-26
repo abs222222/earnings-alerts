@@ -17,6 +17,7 @@ import { google, Auth } from 'googleapis';
 // Required scopes for Sheets and Gmail
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets.readonly',
+  'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
 ];
 
@@ -47,6 +48,10 @@ function loadServiceAccount(credentialsPath: string): Auth.GoogleAuth {
 
 /**
  * Load OAuth user credentials and create auth client
+ *
+ * Handles token format from google_utils.py which uses:
+ * - "token" (not "access_token")
+ * - "expiry" (not "expiry_date")
  */
 function loadOAuthCredentials(tokenPath: string): Auth.OAuth2Client {
   if (!fs.existsSync(tokenPath)) {
@@ -61,14 +66,26 @@ function loadOAuthCredentials(tokenPath: string): Auth.OAuth2Client {
 
   const oauth2Client = new google.auth.OAuth2(
     token.client_id,
-    token.client_secret
+    token.client_secret,
+    'https://oauth2.googleapis.com/token' // redirect URI for refresh
   );
 
+  // Handle both token formats (google_utils.py uses "token", standard uses "access_token")
+  const accessToken = token.token || token.access_token;
+
+  // Handle expiry format (google_utils.py uses ISO string "expiry", standard uses epoch ms "expiry_date")
+  let expiryDate: number | undefined;
+  if (token.expiry) {
+    expiryDate = new Date(token.expiry).getTime();
+  } else if (token.expiry_date) {
+    expiryDate = token.expiry_date;
+  }
+
   oauth2Client.setCredentials({
-    access_token: token.access_token,
+    access_token: accessToken,
     refresh_token: token.refresh_token,
-    expiry_date: token.expiry_date,
-    token_type: token.token_type,
+    expiry_date: expiryDate,
+    token_type: token.token_type || 'Bearer',
   });
 
   return oauth2Client;

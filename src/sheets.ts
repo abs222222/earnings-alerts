@@ -8,13 +8,43 @@
 import { getSheetsService } from './google-auth';
 import { EarningsReport, TimeOfDay } from './types';
 import { parse, isValid } from 'date-fns';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// Column indices (0-based) - adjust if sheet structure changes
+/**
+ * Settings loaded from config/settings.json
+ */
+interface Settings {
+  sheets?: {
+    earnings?: { id?: string; watchlistTab?: string };
+  };
+  holdingsEmail?: {
+    sender?: string;
+    filename?: string;
+  };
+  sheetName?: string;
+}
+
+/**
+ * Load settings from config/settings.json
+ */
+export function loadSettings(): Settings {
+  try {
+    const settingsPath = path.join(process.cwd(), 'config', 'settings.json');
+    const content = fs.readFileSync(settingsPath, 'utf-8');
+    return JSON.parse(content) as Settings;
+  } catch {
+    // Return empty object if settings file doesn't exist or is invalid
+    return {};
+  }
+}
+
+// Column indices (0-based) based on actual earnings sheet structure
+// Col 1 (A): Ticker, Col 59: Next Earnings Date, Col 60: Time of day
 const COLUMNS = {
-  TICKER: 0,
-  COMPANY: 1,
-  REPORT_DATE: 2,
-  TIME_OF_DAY: 3,
+  TICKER: 0,           // Column A
+  REPORT_DATE: 58,     // Column 59 (0-indexed = 58)
+  TIME_OF_DAY: 59,     // Column 60 (0-indexed = 59)
 };
 
 /**
@@ -38,23 +68,128 @@ export interface SheetReadResult {
 }
 
 /**
- * Get sheet ID from environment or throw error
+ * Get earnings sheet ID from environment variable or config file
+ * Priority: GOOGLE_SHEET_ID env var > config/settings.json
  */
-function getSheetId(): string {
-  const sheetId = process.env.GOOGLE_SHEET_ID;
-  if (!sheetId) {
-    throw new Error(
-      'GOOGLE_SHEET_ID not set. Add it to .env file or environment variables.'
-    );
+export function getEarningsSheetId(): string {
+  // Check environment variable first
+  const envSheetId = process.env.GOOGLE_SHEET_ID;
+  if (envSheetId) {
+    return envSheetId;
   }
-  return sheetId;
+
+  // Fall back to config file
+  const settings = loadSettings();
+  const configSheetId = settings.sheets?.earnings?.id;
+  if (configSheetId) {
+    return configSheetId;
+  }
+
+  throw new Error(
+    'Earnings sheet ID not configured. Set GOOGLE_SHEET_ID env var or add to config/settings.json'
+  );
 }
 
 /**
- * Get sheet name from environment or use default
+ * Get sheet ID from environment or config (backwards compatible alias)
+ * @deprecated Use getEarningsSheetId() instead
  */
-function getSheetName(): string {
-  return process.env.SHEET_NAME || 'Earnings';
+function getSheetId(): string {
+  return getEarningsSheetId();
+}
+
+/**
+ * List all tab names from a Google Sheet
+ *
+ * @param sheetId - The spreadsheet ID
+ * @returns Array of tab names
+ */
+export async function listSheetTabs(sheetId: string): Promise<string[]> {
+  const sheets = await getSheetsService();
+  const response = await sheets.spreadsheets.get({
+    spreadsheetId: sheetId,
+    fields: 'sheets.properties.title',
+  });
+
+  const sheetList = response.data.sheets;
+  if (!sheetList || sheetList.length === 0) {
+    return [];
+  }
+
+  return sheetList
+    .map((sheet) => sheet.properties?.title)
+    .filter((title): title is string => typeof title === 'string');
+}
+
+/**
+ * Find the latest date-named tab from a list of tab names
+ *
+ * Date tabs must match YYYY-MM-DD format (e.g., "2026-01-25")
+ *
+ * @param tabNames - Array of tab names to search
+ * @returns Most recent date tab name, or null if none found
+ */
+export function findLatestDateTab(tabNames: string[]): string | null {
+  // Match YYYY-MM-DD pattern
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+  const dateTabs = tabNames.filter((name) => datePattern.test(name));
+
+  if (dateTabs.length === 0) {
+    return null;
+  }
+
+  // Sort descending (most recent first) - string sort works for YYYY-MM-DD
+  dateTabs.sort((a, b) => b.localeCompare(a));
+
+  return dateTabs[0];
+}
+
+/**
+ * Get the latest date-named tab from the earnings sheet
+ *
+ * Convenience function that combines listSheetTabs and findLatestDateTab
+ *
+ * @returns Most recent date tab name
+ * @throws Error if no date-named tabs found
+ */
+export async function getLatestEarningsTab(): Promise<string> {
+  const sheetId = getEarningsSheetId();
+  const tabNames = await listSheetTabs(sheetId);
+  const latestTab = findLatestDateTab(tabNames);
+
+  if (!latestTab) {
+    throw new Error(
+      'No date-named tabs found in earnings sheet. Expected tabs with YYYY-MM-DD format.'
+    );
+  }
+
+  console.log(`Auto-selected earnings tab: ${latestTab}`);
+  return latestTab;
+}
+
+/**
+ * Get sheet name from environment or auto-detect latest date tab
+ *
+ * Priority:
+ * 1. SHEET_NAME environment variable (if set)
+ * 2. Auto-detect latest date-named tab (YYYY-MM-DD format)
+ */
+async function getSheetName(): Promise<string> {
+  // Use explicit env var if set
+  const envSheetName = process.env.SHEET_NAME;
+  if (envSheetName) {
+    return envSheetName;
+  }
+
+  // Auto-detect latest date tab
+  try {
+    return await getLatestEarningsTab();
+  } catch (error) {
+    // Fall back to default if auto-detect fails
+    console.warn('Could not auto-detect date tab, using default "Earnings"');
+    return 'Earnings';
+  }
 }
 
 /**
@@ -65,10 +200,11 @@ function getSheetName(): string {
 export async function readRawSheetData(): Promise<string[][]> {
   const sheets = await getSheetsService();
   const sheetId = getSheetId();
-  const sheetName = getSheetName();
+  const sheetName = await getSheetName();
 
-  // Read all data from the sheet (A:D covers ticker, company, date, time)
-  const range = `${sheetName}!A:D`;
+  // Read columns A and BG:BH (ticker, earnings date, time)
+  // Sheet has 60+ columns, we need specific ones
+  const range = `${sheetName}!A:BH`;
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetId,
@@ -142,19 +278,37 @@ function parseTimeOfDay(timeStr: string | undefined): TimeOfDay {
 
   const normalized = timeStr.trim().toLowerCase();
 
-  // Direct matches
-  if (normalized === 'premarket' || normalized === 'pre-market' || normalized === 'pre') {
-    return 'premarket';
+  // Skip explicit unknowns
+  if (normalized === 'unspecified' || normalized === 'xx' || normalized === '') {
+    return 'unknown';
   }
-  if (normalized === 'postmarket' || normalized === 'post-market' || normalized === 'post' || normalized === 'amc' || normalized === 'after market close') {
-    return 'postmarket';
-  }
-  if (normalized === 'bmo' || normalized === 'before market open') {
+
+  // Direct text matches for premarket
+  if (
+    normalized === 'premarket' ||
+    normalized === 'pre-market' ||
+    normalized === 'pre' ||
+    normalized === 'bmo' ||
+    normalized === 'before market' ||
+    normalized === 'before market open'
+  ) {
     return 'premarket';
   }
 
-  // Try to parse specific time (e.g., "6:00am", "4:30pm")
-  const timeMatch = normalized.match(/^(\d{1,2}):?(\d{2})?\s*(am|pm)?$/i);
+  // Direct text matches for postmarket
+  if (
+    normalized === 'postmarket' ||
+    normalized === 'post-market' ||
+    normalized === 'post' ||
+    normalized === 'amc' ||
+    normalized === 'after market' ||
+    normalized === 'after market close'
+  ) {
+    return 'postmarket';
+  }
+
+  // Try to parse specific time (e.g., "6:00 AM", "4:30 PM")
+  const timeMatch = normalized.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
   if (timeMatch) {
     let hours = parseInt(timeMatch[1], 10);
     const period = timeMatch[3]?.toLowerCase();
@@ -166,14 +320,16 @@ function parseTimeOfDay(timeStr: string | undefined): TimeOfDay {
       hours = 0;
     }
 
-    // Pre-market: 5:00am - 9:30am (5-9.5 in 24h = 5-9.5)
-    // Post-market: 4:00pm - 8:00pm (16-20 in 24h)
-    if (hours >= 5 && hours < 10) {
-      return 'premarket';
-    }
-    if (hours >= 16 && hours <= 20) {
+    // Post-market: 3:00pm - 8:00pm (15-20 in 24h)
+    // Being generous with start time since some report at 3pm
+    if (hours >= 15 && hours <= 20) {
       return 'postmarket';
     }
+
+    // Pre-market: everything else with a time is available before market open
+    // This includes midnight-5am (international companies), 5am-9:30am (normal premarket)
+    // Reports at these times will be available when US market opens
+    return 'premarket';
   }
 
   return 'unknown';
@@ -201,18 +357,13 @@ function validateRow(row: string[], rowIndex: number): ValidationResult {
   }
 
   if (!reportDate) {
+    // Skip silently - many rows may not have earnings dates
     errors.push(`Row ${rowIndex}: Missing report date`);
   } else {
     const parsed = parseDate(reportDate);
     if (!parsed) {
       errors.push(`Row ${rowIndex}: Invalid date format "${reportDate}"`);
     }
-  }
-
-  // Optional field warnings
-  const company = row[COLUMNS.COMPANY]?.trim();
-  if (!company) {
-    warnings.push(`Row ${rowIndex}: Missing company name for ${ticker || 'unknown ticker'}`);
   }
 
   return {
@@ -230,7 +381,6 @@ function validateRow(row: string[], rowIndex: number): ValidationResult {
  */
 function parseRow(row: string[]): EarningsReport | null {
   const ticker = row[COLUMNS.TICKER]?.trim().toUpperCase();
-  const company = row[COLUMNS.COMPANY]?.trim() || ticker; // Fall back to ticker if no company name
   const dateStr = row[COLUMNS.REPORT_DATE]?.trim();
   const timeStr = row[COLUMNS.TIME_OF_DAY]?.trim();
 
@@ -241,7 +391,7 @@ function parseRow(row: string[]): EarningsReport | null {
 
   return {
     ticker,
-    company,
+    company: ticker, // Use ticker as company name (sheet doesn't have company column in our range)
     reportDate,
     timeOfDay: parseTimeOfDay(timeStr),
     rawTimeString: timeStr || undefined,
@@ -330,4 +480,33 @@ export async function getEarningsReports(): Promise<EarningsReport[]> {
     `Loaded ${result.validRows} earnings reports (${result.skippedRows} rows skipped)`
   );
   return result.reports;
+}
+
+/**
+ * Read ticker watchlist from "Tickers for email" tab
+ *
+ * Returns unique uppercase ticker symbols from the watchlist tab.
+ * Handles empty tab gracefully by returning empty array.
+ *
+ * @returns Array of unique uppercase ticker symbols
+ */
+export async function getWatchlistTickers(): Promise<string[]> {
+  const sheets = await getSheetsService();
+  const sheetId = getEarningsSheetId();
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: 'Tickers for email!A:A',
+  });
+
+  const rows = response.data.values || [];
+
+  // Skip header if present, filter empty, uppercase, dedupe
+  const tickers = rows
+    .flat()
+    .filter(Boolean)
+    .map((t) => t.toString().trim().toUpperCase())
+    .filter((t) => t && t !== 'TICKER'); // Skip header row
+
+  return [...new Set(tickers)]; // Dedupe
 }

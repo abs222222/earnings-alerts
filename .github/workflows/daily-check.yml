@@ -1,26 +1,20 @@
 name: Daily Earnings Check
 
 on:
-  # Run at 6am EST on weekdays (11:00 UTC)
-  # EST = UTC-5, so 6am EST = 11:00 UTC
   schedule:
-    - cron: '0 11 * * 1-5'  # Monday-Friday at 11:00 UTC (6:00 AM EST)
+    # 6:00 AM EST = 11:00 UTC (EST is UTC-5)
+    # Runs Monday-Friday
+    - cron: '0 11 * * 1-5'
 
-  # Allow manual triggering
+  # Allow manual trigger from GitHub UI
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Run in dry-run mode (no emails sent)'
-        required: false
-        default: 'false'
-        type: boolean
 
 jobs:
   check-earnings:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -32,22 +26,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Create credentials file
+      - name: Setup Google credentials
         run: |
-          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > credentials.json
+          mkdir -p ~/.claude/code-executor
+          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > ~/.claude/code-executor/google_credentials.json
+          echo '${{ secrets.GOOGLE_TOKEN }}' > ~/.claude/code-executor/google_token.json
 
       - name: Run earnings check
+        run: npm run check
         env:
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_CREDENTIALS_PATH: ./credentials.json
-          LOG_LEVEL: info
-        run: |
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            npm run check -- --dry-run
-          else
-            npm run check
-          fi
+          NODE_ENV: production
 
       - name: Cleanup credentials
         if: always()
-        run: rm -f credentials.json
+        run: |
+          rm -rf ~/.claude/code-executor

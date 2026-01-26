@@ -6,9 +6,10 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/main.js",
-    "dev": "ts-node src/main.ts",
-    "check": "ts-node src/main.ts --check-trading-day",
-    "check:dry": "ts-node src/main.ts --check-trading-day --dry-run",
+    "dev": "node node_modules/ts-node/dist/bin.js src/main.ts",
+    "check": "node node_modules/ts-node/dist/bin.js src/main.ts --check-trading-day",
+    "check:dry": "node node_modules/ts-node/dist/bin.js src/main.ts --check-trading-day --dry-run",
+    "dry-run": "node node_modules/ts-node/dist/bin.js src/main.ts --dry-run --verbose",
     "test": "jest"
   },
   "keywords": [
