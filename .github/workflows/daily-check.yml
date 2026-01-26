@@ -34,8 +34,6 @@ jobs:
           mkdir -p ~/.claude/code-executor
           echo "$GOOGLE_CREDENTIALS_B64" | base64 -d > ~/.claude/code-executor/google_credentials.json
           echo "$GOOGLE_TOKEN_B64" | base64 -d > ~/.claude/code-executor/google_token.json
-          echo "Credentials: $(wc -c < ~/.claude/code-executor/google_credentials.json) bytes (expected: 411)"
-          echo "Token: $(wc -c < ~/.claude/code-executor/google_token.json) bytes (expected: 1071)"
 
       - name: Run earnings check
         run: npm run check
