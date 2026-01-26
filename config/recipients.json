@@ -1,6 +1,7 @@
 {
   "recipients": [
-    "adambrettsimon@gmail.com"
+    "adambrettsimon@gmail.com",
+    "James@clockwisecapital.com"
   ],
   "enabled": true,
   "notes": "Add email addresses to receive earnings alerts. Set enabled=false to disable all emails."
