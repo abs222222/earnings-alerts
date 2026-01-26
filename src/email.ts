@@ -219,35 +219,38 @@ function generateSection(
 }
 
 /**
- * Alert sections for the 4-section email
+ * Alert sections for the 5-section email
  */
 export interface AlertSections {
-  holdingsNextDay: AlertDue[];      // Holdings reporting tomorrow
-  holdingsUpcoming: AlertDue[];     // Holdings reporting in 2-5 trading days
-  watchlistNextDay: AlertDue[];     // Watchlist reporting tomorrow
-  watchlistUpcoming: AlertDue[];    // Watchlist reporting in 2-3 trading days
+  holdingsPremarket: AlertDue[];       // Holdings reporting pre-market today
+  holdingsBeforeNextOpen: AlertDue[];  // Holdings: post-market today + pre-market tomorrow
+  holdingsUpcoming: AlertDue[];        // Holdings: post-market tomorrow through pre-market 5 days out
+  watchlistPremarket: AlertDue[];      // Watchlist reporting pre-market today
+  watchlistUpcoming: AlertDue[];       // Watchlist: post-market today through pre-market 2 days out
 }
 
 /**
- * Format alert data into HTML email with four sections
+ * Format alert data into HTML email with five sections
  *
- * @param sections - Object containing 4 arrays of alerts
+ * @param sections - Object containing 5 arrays of alerts
  * @returns Object with subject and html body
  */
 export function formatAlertEmail(
   sections: AlertSections
 ): { subject: string; html: string } {
   const {
-    holdingsNextDay,
+    holdingsPremarket,
+    holdingsBeforeNextOpen,
     holdingsUpcoming,
-    watchlistNextDay,
+    watchlistPremarket,
     watchlistUpcoming,
   } = sections;
 
   const totalCount =
-    holdingsNextDay.length +
+    holdingsPremarket.length +
+    holdingsBeforeNextOpen.length +
     holdingsUpcoming.length +
-    watchlistNextDay.length +
+    watchlistPremarket.length +
     watchlistUpcoming.length;
 
   if (totalCount === 0) {
@@ -257,26 +260,23 @@ export function formatAlertEmail(
     };
   }
 
-  // Generate subject line based on next-day alerts (most urgent)
-  const nextDayHoldings = holdingsNextDay.length;
-  const nextDayWatchlist = watchlistNextDay.length;
-  const upcomingHoldings = holdingsUpcoming.length;
-  const upcomingWatchlist = watchlistUpcoming.length;
-
+  // Generate subject line
   let subject = 'Earnings Alert: ';
   const parts: string[] = [];
 
-  if (nextDayHoldings > 0) {
-    parts.push(`${nextDayHoldings} holding${nextDayHoldings > 1 ? 's' : ''} tomorrow`);
+  const holdingsUrgent = holdingsPremarket.length + holdingsBeforeNextOpen.length;
+  if (holdingsUrgent > 0) {
+    parts.push(`${holdingsUrgent} holding${holdingsUrgent > 1 ? 's' : ''} imminent`);
   }
-  if (nextDayWatchlist > 0) {
-    parts.push(`${nextDayWatchlist} watchlist tomorrow`);
+  if (holdingsUpcoming.length > 0) {
+    parts.push(`${holdingsUpcoming.length} holding${holdingsUpcoming.length > 1 ? 's' : ''} upcoming`);
   }
-  if (upcomingHoldings > 0) {
-    parts.push(`${upcomingHoldings} holding${upcomingHoldings > 1 ? 's' : ''} upcoming`);
+  const watchlistUrgent = watchlistPremarket.length;
+  if (watchlistUrgent > 0) {
+    parts.push(`${watchlistUrgent} watchlist pre-mkt`);
   }
-  if (upcomingWatchlist > 0) {
-    parts.push(`${upcomingWatchlist} watchlist upcoming`);
+  if (watchlistUpcoming.length > 0) {
+    parts.push(`${watchlistUpcoming.length} watchlist upcoming`);
   }
 
   subject += parts.join(', ');
@@ -285,29 +285,36 @@ export function formatAlertEmail(
   const today = format(new Date(), 'EEEE, MMMM d, yyyy');
 
   // Generate sections with different colors
-  const holdingsNextDaySection = generateSection(
-    '🔔 HOLDINGS - REPORTING TOMORROW',
-    holdingsNextDay,
-    '#c41e3a', // Dark red for urgent
+  const holdingsPremarketSection = generateSection(
+    '🚨 HOLDINGS - PRE-MARKET',
+    holdingsPremarket,
+    '#d32f2f', // Red - most urgent
+    'linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%)'
+  );
+
+  const holdingsBeforeNextOpenSection = generateSection(
+    '🔔 HOLDINGS - BEFORE NEXT OPEN',
+    holdingsBeforeNextOpen,
+    '#c41e3a', // Dark red
     'linear-gradient(135deg, #c41e3a 0%, #8b0000 100%)'
   );
 
   const holdingsUpcomingSection = generateSection(
-    '📅 HOLDINGS - NEXT 5 TRADING DAYS',
+    '📅 HOLDINGS - 2-5 DAYS OUT',
     holdingsUpcoming,
     '#d4a017', // Gold
     'linear-gradient(135deg, #d4a017 0%, #b8860b 100%)'
   );
 
-  const watchlistNextDaySection = generateSection(
-    '🔔 WATCHLIST - REPORTING TOMORROW',
-    watchlistNextDay,
+  const watchlistPremarketSection = generateSection(
+    '🚨 WATCHLIST - PRE-MARKET',
+    watchlistPremarket,
     '#1976d2', // Blue
     'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)'
   );
 
   const watchlistUpcomingSection = generateSection(
-    '📅 WATCHLIST - NEXT 3 TRADING DAYS',
+    '📅 WATCHLIST - NEXT 2 DAYS',
     watchlistUpcoming,
     '#5c6bc0', // Indigo
     'linear-gradient(135deg, #5c6bc0 0%, #3f51b5 100%)'
@@ -329,9 +336,10 @@ export function formatAlertEmail(
   </div>
 
   <div style="background: #f8f9fa; padding: 20px; border: 1px solid #e0e0e0; border-top: none;">
-    ${holdingsNextDaySection}
+    ${holdingsPremarketSection}
+    ${holdingsBeforeNextOpenSection}
     ${holdingsUpcomingSection}
-    ${watchlistNextDaySection}
+    ${watchlistPremarketSection}
     ${watchlistUpcomingSection}
 
     <p style="margin: 16px 0 0 0; font-size: 13px; color: #666;">

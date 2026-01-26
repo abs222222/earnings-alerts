@@ -195,11 +195,22 @@ async function runDailyCheck(): Promise<void> {
   logInfo(`Filtered to ${filteredReports.length} reports matching holdings/watchlist`);
 
   // -------------------------------------------------------------------------
-  // Step 5: Calculate alerts for all 4 sections
+  // Step 5: Calculate alerts for all 5 sections
   // -------------------------------------------------------------------------
   logStep(5, 'Calculating alerts for all sections...');
 
   const holdingsSet = new Set(holdingsTickers.map((t) => t.toUpperCase()));
+  // todayStr already defined at top of function
+  const day1 = getNextTradingDay(today);
+  const day1Str = format(day1, 'yyyy-MM-dd');
+  const day2 = getNextTradingDay(day1);
+  const day2Str = format(day2, 'yyyy-MM-dd');
+  const day3 = getNextTradingDay(day2);
+  const day3Str = format(day3, 'yyyy-MM-dd');
+  const day4 = getNextTradingDay(day3);
+  const day4Str = format(day4, 'yyyy-MM-dd');
+  const day5 = getNextTradingDay(day4);
+  const day5Str = format(day5, 'yyyy-MM-dd');
 
   // Helper to create AlertDue from report
   function createAlertDue(report: EarningsReport): AlertDue {
@@ -212,77 +223,95 @@ async function runDailyCheck(): Promise<void> {
     };
   }
 
-  // Helper to determine if report is on the next trading day
-  function isReportingTomorrow(report: EarningsReport): boolean {
-    const nextTradingDay = getNextTradingDay(today);
-    const reportDateStr = format(report.reportDate, 'yyyy-MM-dd');
-    const nextTradingDayStr = format(nextTradingDay, 'yyyy-MM-dd');
-    return reportDateStr === nextTradingDayStr;
-  }
-
-  // Helper to get trading days until report (for determining upcoming window)
-  function getTradingDaysToReport(report: EarningsReport): number {
-    return tradingDaysUntil(today, report.reportDate);
+  // Helper to get report date string
+  function getReportDateStr(report: EarningsReport): string {
+    return format(report.reportDate, 'yyyy-MM-dd');
   }
 
   // Separate reports into holdings vs watchlist
   const holdingsReports = filteredReports.filter((r) => holdingsSet.has(r.ticker.toUpperCase()));
   const watchlistReports = filteredReports.filter((r) => !holdingsSet.has(r.ticker.toUpperCase()));
 
-  // Section 1: Holdings - Next Day
-  const holdingsNextDay = holdingsReports
-    .filter(isReportingTomorrow)
+  // Section 1: Holdings - Pre-market today
+  const holdingsPremarket = holdingsReports
+    .filter((r) => getReportDateStr(r) === todayStr && r.timeOfDay === 'premarket')
     .map(createAlertDue);
 
-  // Section 2: Holdings - Next 5 trading days (excluding next day)
-  const holdingsNextDayTickers = new Set(holdingsNextDay.map((a) => a.report.ticker));
+  // Section 2: Holdings - Before next open (post-market today + pre-market tomorrow)
+  const holdingsBeforeNextOpen = holdingsReports
+    .filter((r) => {
+      const dateStr = getReportDateStr(r);
+      // Post-market today
+      if (dateStr === todayStr && r.timeOfDay === 'postmarket') return true;
+      // Pre-market tomorrow (day 1)
+      if (dateStr === day1Str && r.timeOfDay === 'premarket') return true;
+      return false;
+    })
+    .map(createAlertDue);
+
+  // Section 3: Holdings - 2-5 days out (post-market day1 through pre-market day5)
   const holdingsUpcoming = holdingsReports
     .filter((r) => {
-      if (holdingsNextDayTickers.has(r.ticker)) return false; // Exclude next day
-      const days = getTradingDaysToReport(r);
-      return days >= 1 && days <= 5; // 2-5 trading days (1 = tomorrow already handled)
+      const dateStr = getReportDateStr(r);
+      // Post-market day 1
+      if (dateStr === day1Str && r.timeOfDay === 'postmarket') return true;
+      // Day 2-4: both pre and post market
+      if ([day2Str, day3Str, day4Str].includes(dateStr)) return true;
+      // Day 5: pre-market only
+      if (dateStr === day5Str && r.timeOfDay === 'premarket') return true;
+      return false;
     })
     .map(createAlertDue);
 
-  // Section 3: Watchlist - Next Day
-  const watchlistNextDay = watchlistReports
-    .filter(isReportingTomorrow)
+  // Section 4: Watchlist - Pre-market today
+  const watchlistPremarket = watchlistReports
+    .filter((r) => getReportDateStr(r) === todayStr && r.timeOfDay === 'premarket')
     .map(createAlertDue);
 
-  // Section 4: Watchlist - Next 3 trading days (excluding next day)
-  const watchlistNextDayTickers = new Set(watchlistNextDay.map((a) => a.report.ticker));
+  // Section 5: Watchlist - Next 2 days (post-market today through pre-market day2)
   const watchlistUpcoming = watchlistReports
     .filter((r) => {
-      if (watchlistNextDayTickers.has(r.ticker)) return false; // Exclude next day
-      const days = getTradingDaysToReport(r);
-      return days >= 1 && days <= 3; // 2-3 trading days
+      const dateStr = getReportDateStr(r);
+      // Post-market today
+      if (dateStr === todayStr && r.timeOfDay === 'postmarket') return true;
+      // Day 1: both pre and post market
+      if (dateStr === day1Str) return true;
+      // Day 2: pre-market only
+      if (dateStr === day2Str && r.timeOfDay === 'premarket') return true;
+      return false;
     })
     .map(createAlertDue);
 
-  logSuccess(`Holdings next day: ${holdingsNextDay.length}, upcoming: ${holdingsUpcoming.length}`);
-  logSuccess(`Watchlist next day: ${watchlistNextDay.length}, upcoming: ${watchlistUpcoming.length}`);
+  logSuccess(`Holdings: pre-mkt=${holdingsPremarket.length}, before-next-open=${holdingsBeforeNextOpen.length}, upcoming=${holdingsUpcoming.length}`);
+  logSuccess(`Watchlist: pre-mkt=${watchlistPremarket.length}, upcoming=${watchlistUpcoming.length}`);
 
   if (options.verbose) {
-    if (holdingsNextDay.length > 0) {
-      logVerbose('Holdings - Next Day:');
-      holdingsNextDay.forEach((alert) => {
+    if (holdingsPremarket.length > 0) {
+      logVerbose('Holdings - Pre-market:');
+      holdingsPremarket.forEach((alert) => {
+        logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
+      });
+    }
+    if (holdingsBeforeNextOpen.length > 0) {
+      logVerbose('Holdings - Before Next Open:');
+      holdingsBeforeNextOpen.forEach((alert) => {
         logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
       });
     }
     if (holdingsUpcoming.length > 0) {
-      logVerbose('Holdings - Upcoming (2-5 days):');
+      logVerbose('Holdings - 2-5 Days:');
       holdingsUpcoming.forEach((alert) => {
         logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
       });
     }
-    if (watchlistNextDay.length > 0) {
-      logVerbose('Watchlist - Next Day:');
-      watchlistNextDay.forEach((alert) => {
+    if (watchlistPremarket.length > 0) {
+      logVerbose('Watchlist - Pre-market:');
+      watchlistPremarket.forEach((alert) => {
         logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
       });
     }
     if (watchlistUpcoming.length > 0) {
-      logVerbose('Watchlist - Upcoming (2-3 days):');
+      logVerbose('Watchlist - Next 2 Days:');
       watchlistUpcoming.forEach((alert) => {
         logVerbose(`  ${alert.report.ticker} - ${alert.reportDateFormatted} (${alert.report.timeOfDay})`);
       });
@@ -290,8 +319,8 @@ async function runDailyCheck(): Promise<void> {
   }
 
   // Check if there's anything to send
-  const totalAlerts = holdingsNextDay.length + holdingsUpcoming.length +
-                      watchlistNextDay.length + watchlistUpcoming.length;
+  const totalAlerts = holdingsPremarket.length + holdingsBeforeNextOpen.length +
+                      holdingsUpcoming.length + watchlistPremarket.length + watchlistUpcoming.length;
 
   if (totalAlerts === 0) {
     logInfo('No alerts in any section. Nothing to send.');
@@ -304,9 +333,10 @@ async function runDailyCheck(): Promise<void> {
   logStep(6, options.dryRun ? 'Preparing email (dry run)...' : 'Sending email...');
 
   const alertSections: AlertSections = {
-    holdingsNextDay,
+    holdingsPremarket,
+    holdingsBeforeNextOpen,
     holdingsUpcoming,
-    watchlistNextDay,
+    watchlistPremarket,
     watchlistUpcoming,
   };
 
@@ -315,9 +345,10 @@ async function runDailyCheck(): Promise<void> {
     const { subject } = formatAlertEmail(alertSections);
     log(`\n  Subject: ${subject}`);
     log(`  Recipients: ${getRecipients().join(', ') || '(none configured)'}`);
-    log(`  Holdings next day: ${holdingsNextDay.length}`);
+    log(`  Holdings pre-mkt: ${holdingsPremarket.length}`);
+    log(`  Holdings before next open: ${holdingsBeforeNextOpen.length}`);
     log(`  Holdings upcoming: ${holdingsUpcoming.length}`);
-    log(`  Watchlist next day: ${watchlistNextDay.length}`);
+    log(`  Watchlist pre-mkt: ${watchlistPremarket.length}`);
     log(`  Watchlist upcoming: ${watchlistUpcoming.length}`);
   }
 
@@ -338,18 +369,18 @@ async function runDailyCheck(): Promise<void> {
   }
 
   // -------------------------------------------------------------------------
-  // Step 7: Mark next-day alerts as sent (skip in dry-run mode)
+  // Step 7: Mark urgent alerts as sent (skip in dry-run mode)
   // -------------------------------------------------------------------------
-  const nextDayAlerts = [...holdingsNextDay, ...watchlistNextDay];
-  if (!options.dryRun && emailSent && nextDayAlerts.length > 0) {
-    logStep(7, 'Marking next-day alerts as sent...');
+  const urgentAlerts = [...holdingsPremarket, ...holdingsBeforeNextOpen, ...watchlistPremarket];
+  if (!options.dryRun && emailSent && urgentAlerts.length > 0) {
+    logStep(7, 'Marking urgent alerts as sent...');
 
-    for (const alert of nextDayAlerts) {
+    for (const alert of urgentAlerts) {
       markAlertSent(alert.report.ticker, alert.report.reportDate);
       logVerbose(`Marked as sent: ${alert.report.ticker}`);
     }
 
-    logSuccess(`Marked ${nextDayAlerts.length} next-day alert(s) as sent`);
+    logSuccess(`Marked ${urgentAlerts.length} urgent alert(s) as sent`);
   } else if (options.dryRun) {
     logStep(7, 'Skipping mark-as-sent (dry run mode)');
   }
@@ -365,10 +396,11 @@ async function runDailyCheck(): Promise<void> {
   log(`Total reports in sheet: ${reports.length}`);
   log(`Filtered reports (of interest): ${filteredReports.length}`);
   log('');
-  log(`Holdings - Next Day: ${holdingsNextDay.length}`);
-  log(`Holdings - Upcoming (2-5 days): ${holdingsUpcoming.length}`);
-  log(`Watchlist - Next Day: ${watchlistNextDay.length}`);
-  log(`Watchlist - Upcoming (2-3 days): ${watchlistUpcoming.length}`);
+  log(`Holdings - Pre-market: ${holdingsPremarket.length}`);
+  log(`Holdings - Before Next Open: ${holdingsBeforeNextOpen.length}`);
+  log(`Holdings - 2-5 Days: ${holdingsUpcoming.length}`);
+  log(`Watchlist - Pre-market: ${watchlistPremarket.length}`);
+  log(`Watchlist - Next 2 Days: ${watchlistUpcoming.length}`);
   log('========================================');
 }
 
