@@ -8,7 +8,7 @@
  * - Alert deduplication
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { isSameDay, format, differenceInCalendarDays } from 'date-fns';
 import { EarningsReport, AlertDue, SentAlert, TimeOfDay } from './types';
@@ -395,6 +395,10 @@ export function loadSentAlerts(): SentAlert[] {
  */
 export function saveSentAlerts(alerts: SentAlert[]): void {
   try {
+    // Ensure data directory exists
+    if (!existsSync(DATA_DIR)) {
+      mkdirSync(DATA_DIR, { recursive: true });
+    }
     writeFileSync(SENT_ALERTS_FILE, JSON.stringify(alerts, null, 2), 'utf-8');
   } catch (error) {
     console.error('[ERROR] Failed to save sent alerts:', error);
