@@ -212,25 +212,12 @@ async function runDailyCheck(): Promise<void> {
     };
   }
 
-  // Helper to determine if report alerts "tomorrow" (next trading day)
-  // Based on time of day: postmarket = same day alert, premarket/unknown = day before alert
-  function isNextDayAlert(report: EarningsReport): boolean {
+  // Helper to determine if report is on the next trading day
+  function isReportingTomorrow(report: EarningsReport): boolean {
     const nextTradingDay = getNextTradingDay(today);
-    const reportDate = report.reportDate;
-    const reportDateStr = format(reportDate, 'yyyy-MM-dd');
+    const reportDateStr = format(report.reportDate, 'yyyy-MM-dd');
     const nextTradingDayStr = format(nextTradingDay, 'yyyy-MM-dd');
-    const dayAfterNext = getNextTradingDay(nextTradingDay);
-    const dayAfterNextStr = format(dayAfterNext, 'yyyy-MM-dd');
-
-    // Postmarket on next trading day = alert tomorrow (next trading day morning)
-    if (reportDateStr === nextTradingDayStr && report.timeOfDay === 'postmarket') {
-      return true;
-    }
-    // Premarket/unknown on day after next = alert tomorrow (day before report)
-    if (reportDateStr === dayAfterNextStr && report.timeOfDay !== 'postmarket') {
-      return true;
-    }
-    return false;
+    return reportDateStr === nextTradingDayStr;
   }
 
   // Helper to get trading days until report (for determining upcoming window)
@@ -244,7 +231,7 @@ async function runDailyCheck(): Promise<void> {
 
   // Section 1: Holdings - Next Day
   const holdingsNextDay = holdingsReports
-    .filter(isNextDayAlert)
+    .filter(isReportingTomorrow)
     .map(createAlertDue);
 
   // Section 2: Holdings - Next 5 trading days (excluding next day)
@@ -259,7 +246,7 @@ async function runDailyCheck(): Promise<void> {
 
   // Section 3: Watchlist - Next Day
   const watchlistNextDay = watchlistReports
-    .filter(isNextDayAlert)
+    .filter(isReportingTomorrow)
     .map(createAlertDue);
 
   // Section 4: Watchlist - Next 3 trading days (excluding next day)
