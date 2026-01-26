@@ -35,6 +35,16 @@ jobs:
           node -e "require('fs').writeFileSync(require('os').homedir() + '/.claude/code-executor/google_credentials.json', process.env.GOOGLE_CREDENTIALS)"
           node -e "require('fs').writeFileSync(require('os').homedir() + '/.claude/code-executor/google_token.json', process.env.GOOGLE_TOKEN)"
 
+      - name: Debug credentials
+        run: |
+          echo "Credentials file size: $(wc -c < ~/.claude/code-executor/google_credentials.json) bytes"
+          echo "Token file size: $(wc -c < ~/.claude/code-executor/google_token.json) bytes"
+          echo "Showing control characters (^X notation):"
+          cat -v ~/.claude/code-executor/google_credentials.json | head -c 150
+          echo ""
+          echo "---"
+          cat -v ~/.claude/code-executor/google_token.json | head -c 150
+
       - name: Run earnings check
         run: npm run check
         env:
