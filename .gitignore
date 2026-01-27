@@ -50,6 +50,9 @@ data/*.log
 # Logs
 *.log
 
+# Claude Code local config
+.claude/
+
 # Agent harness / Claude working files
 orchestrator.js
 worktree-create.js
