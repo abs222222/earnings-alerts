@@ -49,3 +49,12 @@ data/*.log
 
 # Logs
 *.log
+
+# Agent harness / Claude working files
+orchestrator.js
+worktree-create.js
+worktree-merge.js
+worktree-status.js
+features.json
+claude-progress.txt
+CLAUDE.md
