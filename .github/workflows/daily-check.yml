@@ -39,6 +39,7 @@ jobs:
         run: npm run check
         env:
           NODE_ENV: production
+          RECIPIENTS_B64: ${{ secrets.RECIPIENTS_B64 }}
 
       - name: Cleanup credentials
         if: always()

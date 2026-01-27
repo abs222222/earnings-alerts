@@ -35,7 +35,14 @@ interface RecipientsConfig {
  * @throws Error if config file is missing or invalid
  */
 export function getRecipients(): string[] {
-  if (!existsSync(RECIPIENTS_FILE)) {
+  let content: string;
+
+  // Prefer env var (used in CI where recipients are a secret)
+  if (process.env.RECIPIENTS_B64) {
+    content = Buffer.from(process.env.RECIPIENTS_B64, 'base64').toString('utf-8');
+  } else if (existsSync(RECIPIENTS_FILE)) {
+    content = readFileSync(RECIPIENTS_FILE, 'utf-8');
+  } else {
     throw new Error(
       `Recipients config not found: ${RECIPIENTS_FILE}\n` +
         'Create config/recipients.json with {"recipients": ["email@example.com"]}'
@@ -43,7 +50,6 @@ export function getRecipients(): string[] {
   }
 
   try {
-    const content = readFileSync(RECIPIENTS_FILE, 'utf-8');
     const config: RecipientsConfig = JSON.parse(content);
 
     if (!Array.isArray(config.recipients)) {

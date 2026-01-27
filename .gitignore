@@ -40,6 +40,9 @@ token.json
 google_credentials.json
 google_token.json
 
+# Recipients (contains email addresses)
+config/recipients.json
+
 # Data files (runtime generated)
 data/*.json
 data/*.log
