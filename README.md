@@ -4,10 +4,20 @@ Automated email alerts for upcoming company earnings report dates. Runs daily vi
 
 ## How it works
 
-1. Reads earnings dates and watchlist tickers from a Google Sheet (updated weekly from FactSet)
-2. Determines alert timing based on pre-market vs post-market reporting
-3. Calculates trading days using the NYSE calendar (skips weekends and holidays)
-4. Sends HTML email alerts via Gmail API
+1. Pulls current portfolio holdings from a daily Gmail attachment (US Bank sends a CSV at ~7pm each evening)
+2. Reads earnings dates and watchlist tickers from a Google Sheet (updated weekly from FactSet)
+3. Cross-references holdings against upcoming earnings dates
+4. Determines alert timing based on pre-market vs post-market reporting
+5. Calculates trading days using the NYSE calendar (skips weekends and holidays)
+6. Sends HTML email alerts via Gmail API
+
+## Holdings from email
+
+The system automatically reads portfolio holdings from Gmail:
+
+- Searches for emails from the custodian (US Bank) with a CSV attachment
+- Downloads and parses the CSV to extract ticker symbols
+- Uses these tickers to identify which earnings reports are for current holdings vs watchlist
 
 ## Alert logic
 
