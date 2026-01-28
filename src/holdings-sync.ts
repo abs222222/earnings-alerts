@@ -13,7 +13,7 @@
 
 import { Command } from 'commander';
 import * as dotenv from 'dotenv';
-import { format, isToday, startOfDay } from 'date-fns';
+import { format, differenceInHours } from 'date-fns';
 
 dotenv.config();
 
@@ -33,13 +33,17 @@ program
 
 const options = program.opts();
 
+// How many hours back to look for holdings emails
+// Covers 5pm-11pm EST window with buffer (workflow runs at 11pm EST)
+const MAX_EMAIL_AGE_HOURS = 8;
+
 /**
- * Search Gmail for holdings emails from today
+ * Search Gmail for recent holdings emails (within last 8 hours)
  */
-async function searchTodaysHoldingsEmail(): Promise<{ messageId: string; date: Date } | null> {
+async function searchRecentHoldingsEmail(): Promise<{ messageId: string; date: Date } | null> {
   const gmail = await getGmailService();
 
-  // Search for emails from sender with attachment from today
+  // Search for emails from sender with attachment from last day
   const query = `from:${HOLDINGS_EMAIL_SENDER} has:attachment newer_than:1d`;
   console.log(`Searching for holdings emails: ${query}`);
 
@@ -55,7 +59,9 @@ async function searchTodaysHoldingsEmail(): Promise<{ messageId: string; date: D
     return null;
   }
 
-  // Check each message to find one from today
+  const now = new Date();
+
+  // Check each message to find one within the last N hours
   for (const msg of messages) {
     if (!msg.id) continue;
 
@@ -69,15 +75,16 @@ async function searchTodaysHoldingsEmail(): Promise<{ messageId: string; date: D
     const internalDate = msgDetail.data.internalDate;
     if (internalDate) {
       const emailDate = new Date(parseInt(internalDate, 10));
+      const hoursAgo = differenceInHours(now, emailDate);
 
-      if (isToday(emailDate)) {
-        console.log(`Found today's holdings email: ${format(emailDate, 'yyyy-MM-dd HH:mm')}`);
+      if (hoursAgo <= MAX_EMAIL_AGE_HOURS) {
+        console.log(`Found recent holdings email: ${format(emailDate, 'yyyy-MM-dd HH:mm')} (${hoursAgo}h ago)`);
         return { messageId: msg.id, date: emailDate };
       }
     }
   }
 
-  console.log('No holdings email from today found');
+  console.log(`No holdings email found within the last ${MAX_EMAIL_AGE_HOURS} hours`);
   return null;
 }
 
@@ -193,12 +200,12 @@ async function main(): Promise<void> {
     console.log('\n*** DRY RUN MODE ***\n');
   }
 
-  // Step 1: Find today's holdings email
-  console.log('\n[Step 1] Searching for today\'s holdings email...');
-  const emailInfo = await searchTodaysHoldingsEmail();
+  // Step 1: Find recent holdings email (within last 8 hours)
+  console.log('\n[Step 1] Searching for recent holdings email...');
+  const emailInfo = await searchRecentHoldingsEmail();
 
   if (!emailInfo) {
-    console.log('\nNo holdings email from today. Nothing to sync.');
+    console.log('\nNo recent holdings email found. Nothing to sync.');
     return;
   }
 
