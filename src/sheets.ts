@@ -510,3 +510,69 @@ export async function getWatchlistTickers(): Promise<string[]> {
 
   return [...new Set(tickers)]; // Dedupe
 }
+
+// ============================================================================
+// Holdings Sheet Writer (for Supabase integration)
+// ============================================================================
+
+const HOLDINGS_SHEET_ID = process.env.HOLDINGS_SHEET_ID || '1M8web_oJLugd_L9Nj6sWWiJdxSex2KU5xPgbidONT8E';
+
+/**
+ * Write holdings data to a Google Sheet with a dated tab
+ *
+ * @param data - 2D array of data (including header row)
+ * @param tabDate - Date string for the tab name (YYYY-MM-DD)
+ * @returns The name of the created tab
+ */
+export async function writeHoldingsToSheet(data: string[][], tabDate: string): Promise<string> {
+  const sheets = await getSheetsService();
+
+  // Check if tab already exists
+  const spreadsheet = await sheets.spreadsheets.get({
+    spreadsheetId: HOLDINGS_SHEET_ID,
+  });
+
+  const existingTabs = spreadsheet.data.sheets?.map(
+    (s) => s.properties?.title
+  ) || [];
+
+  // Create unique tab name
+  let tabName = tabDate;
+  let counter = 1;
+  while (existingTabs.includes(tabName)) {
+    tabName = `${tabDate}_${counter}`;
+    counter++;
+  }
+
+  // Create the new tab
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: HOLDINGS_SHEET_ID,
+    requestBody: {
+      requests: [{
+        addSheet: {
+          properties: {
+            title: tabName,
+          },
+        },
+      }],
+    },
+  });
+
+  console.log(`Created tab: ${tabName}`);
+
+  // Write data to the new tab
+  if (data.length > 0) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: HOLDINGS_SHEET_ID,
+      range: `'${tabName}'!A1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: data,
+      },
+    });
+
+    console.log(`Wrote ${data.length} rows to ${tabName}`);
+  }
+
+  return tabName;
+}

@@ -10,6 +10,8 @@
     "check": "node node_modules/ts-node/dist/bin.js src/main.ts --check-trading-day",
     "check:dry": "node node_modules/ts-node/dist/bin.js src/main.ts --check-trading-day --dry-run",
     "dry-run": "node node_modules/ts-node/dist/bin.js src/main.ts --dry-run --verbose",
+    "holdings-sync": "node node_modules/ts-node/dist/bin.js src/holdings-sync.ts",
+    "holdings-sync:dry": "node node_modules/ts-node/dist/bin.js src/holdings-sync.ts --dry-run",
     "test": "jest"
   },
   "keywords": [

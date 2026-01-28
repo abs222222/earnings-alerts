@@ -1,0 +1,47 @@
+name: Holdings Sync
+
+on:
+  schedule:
+    # 11:00 PM EST = 4:00 UTC next day (EST is UTC-5)
+    # Runs Mon-Fri evenings (Tue-Sat UTC)
+    - cron: '0 4 * * 2-6'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  sync-holdings:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Google credentials
+        env:
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
+          GOOGLE_TOKEN_B64: ${{ secrets.GOOGLE_TOKEN_B64 }}
+        run: |
+          mkdir -p ~/.claude/code-executor
+          echo "$GOOGLE_CREDENTIALS_B64" | base64 -d > ~/.claude/code-executor/google_credentials.json
+          echo "$GOOGLE_TOKEN_B64" | base64 -d > ~/.claude/code-executor/google_token.json
+
+      - name: Sync holdings to Google Sheet
+        run: npm run holdings-sync
+        env:
+          NODE_ENV: production
+          HOLDINGS_SHEET_ID: ${{ secrets.HOLDINGS_SHEET_ID }}
+
+      - name: Cleanup credentials
+        if: always()
+        run: |
+          rm -rf ~/.claude/code-executor
