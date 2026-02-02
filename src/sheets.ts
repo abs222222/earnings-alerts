@@ -516,6 +516,7 @@ export async function getWatchlistTickers(): Promise<string[]> {
 // ============================================================================
 
 const HOLDINGS_SHEET_ID = process.env.HOLDINGS_SHEET_ID || '1M8web_oJLugd_L9Nj6sWWiJdxSex2KU5xPgbidONT8E';
+const KRONOS_HOLDINGS_SHEET_ID = process.env.KRONOS_HOLDINGS_SHEET_ID || '1nJJNLWLX3-ijQYg0HRY7Qn13kR7znATZWRxZ4sHeH98';
 
 /**
  * Write holdings data to a Google Sheet with a dated tab
@@ -575,4 +576,34 @@ export async function writeHoldingsToSheet(data: string[][], tabDate: string): P
   }
 
   return tabName;
+}
+
+/**
+ * Overwrite the "Holdings Source File (Kronos)" tab in the Kronos Dashboard sheet
+ *
+ * Clears existing data and writes new holdings data in place.
+ *
+ * @param data - 2D array of data (including header row)
+ */
+export async function overwriteKronosHoldings(data: string[][]): Promise<void> {
+  const sheets = await getSheetsService();
+  const tabName = 'Holdings Source File (Kronos)';
+
+  // Clear existing data
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId: KRONOS_HOLDINGS_SHEET_ID,
+    range: `'${tabName}'`,
+  });
+
+  // Write new data
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: KRONOS_HOLDINGS_SHEET_ID,
+    range: `'${tabName}'!A1`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: data,
+    },
+  });
+
+  console.log(`Overwrote ${data.length} rows in "${tabName}"`);
 }

@@ -18,10 +18,10 @@ import { format, differenceInHours } from 'date-fns';
 dotenv.config();
 
 import { getGmailService } from './google-auth';
-import { writeHoldingsToSheet } from './sheets';
+import { writeHoldingsToSheet, overwriteKronosHoldings } from './sheets';
 
 // Configuration
-const HOLDINGS_EMAIL_SENDER = 'USBFS.EOS@usbank.com';
+const HOLDINGS_EMAIL_SUBJECT = 'Clockwise Capital LLC ETF Holdings Report';
 
 // CLI setup
 const program = new Command();
@@ -43,8 +43,8 @@ const MAX_EMAIL_AGE_HOURS = 8;
 async function searchRecentHoldingsEmail(): Promise<{ messageId: string; date: Date } | null> {
   const gmail = await getGmailService();
 
-  // Search for emails from sender with attachment from last day
-  const query = `from:${HOLDINGS_EMAIL_SENDER} has:attachment newer_than:1d`;
+  // Search by subject (works with both direct and forwarded emails)
+  const query = `subject:"${HOLDINGS_EMAIL_SUBJECT}" has:attachment newer_than:1d`;
   console.log(`Searching for holdings emails: ${query}`);
 
   const response = await gmail.users.messages.list({
@@ -106,21 +106,25 @@ async function downloadHoldingsCSV(messageId: string): Promise<string | null> {
     return null;
   }
 
-  const parts = payload.parts || [];
-
-  // Find CSV attachment
-  let attachmentPart = null;
-  for (const part of parts) {
-    const filename = (part.filename || '').toLowerCase();
-    if (filename.includes('holdings') && filename.endsWith('.csv')) {
-      attachmentPart = part;
-      break;
+  // Find CSV attachment (recurse into nested parts for forwarded emails)
+  function findCsvPart(parts: any[]): any {
+    for (const part of parts) {
+      const filename = (part.filename || '').toLowerCase();
+      if (filename.includes('holdings') && filename.endsWith('.csv')) {
+        return part;
+      }
+      if (part.body?.attachmentId && part.mimeType === 'text/csv') {
+        return part;
+      }
+      if (part.parts) {
+        const nested = findCsvPart(part.parts);
+        if (nested) return nested;
+      }
     }
-    if (part.body?.attachmentId && part.mimeType === 'text/csv') {
-      attachmentPart = part;
-      break;
-    }
+    return null;
   }
+
+  const attachmentPart = findCsvPart(payload.parts || []);
 
   if (!attachmentPart || !attachmentPart.body?.attachmentId) {
     console.warn('No holdings CSV attachment found');
@@ -233,6 +237,7 @@ async function main(): Promise<void> {
 
   if (options.dryRun) {
     console.log(`\n[Step 4] Would write ${rows.length} rows to tab "${tabDate}"`);
+    console.log(`[Step 5] Would overwrite Kronos Dashboard holdings tab`);
     console.log('\nDry run complete. No data written.');
     return;
   }
@@ -240,8 +245,13 @@ async function main(): Promise<void> {
   console.log(`\n[Step 4] Writing to Google Sheet...`);
   const tabName = await writeHoldingsToSheet(rows, tabDate);
 
+  // Step 5: Overwrite Kronos Dashboard holdings tab
+  console.log(`\n[Step 5] Overwriting Kronos Dashboard holdings...`);
+  await overwriteKronosHoldings(rows);
+
   console.log('\n========================================');
   console.log(`SUCCESS: Holdings written to tab "${tabName}"`);
+  console.log(`SUCCESS: Kronos Dashboard holdings overwritten`);
   console.log('========================================');
 }
 

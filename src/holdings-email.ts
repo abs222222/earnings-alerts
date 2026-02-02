@@ -12,7 +12,7 @@
 import { getGmailService } from './google-auth';
 
 // Email search parameters
-const HOLDINGS_EMAIL_SENDER = 'USBFS.EOS@usbank.com';
+const HOLDINGS_EMAIL_SUBJECT = 'Clockwise Capital LLC ETF Holdings Report';
 const HOLDINGS_ATTACHMENT_NAME = 'Holdings Report.csv';
 
 /**
@@ -26,7 +26,7 @@ export async function searchHoldingsEmail(daysBack = 3): Promise<string[]> {
 
   // Build search query
   // Search for emails from the sender with an attachment
-  const query = `from:${HOLDINGS_EMAIL_SENDER} has:attachment newer_than:${daysBack}d`;
+  const query = `subject:"${HOLDINGS_EMAIL_SUBJECT}" has:attachment newer_than:${daysBack}d`;
 
   console.log(`Searching for holdings emails: ${query}`);
 
@@ -87,41 +87,32 @@ export async function downloadHoldingsAttachment(
       return null;
     }
 
-    // Find the attachment in parts
-    const parts = payload.parts || [];
-    let attachmentPart = null;
-
-    // Search for the Holdings Report.csv attachment
-    for (const part of parts) {
-      const filename = part.filename || '';
-      if (
-        filename.toLowerCase().includes('holdings') &&
-        filename.toLowerCase().endsWith('.csv')
-      ) {
-        attachmentPart = part;
-        break;
-      }
-    }
-
-    // Also check if there's a body with attachmentId (for simple messages)
-    if (!attachmentPart) {
+    // Find CSV attachment (recurse into nested parts for forwarded emails)
+    function findCsvPart(parts: any[]): any {
       for (const part of parts) {
-        if (
-          part.body?.attachmentId &&
-          part.mimeType === 'text/csv'
-        ) {
-          attachmentPart = part;
-          break;
+        const filename = (part.filename || '').toLowerCase();
+        if (filename.includes('holdings') && filename.endsWith('.csv')) {
+          return part;
+        }
+        if (part.body?.attachmentId && part.mimeType === 'text/csv') {
+          return part;
+        }
+        if (part.parts) {
+          const nested = findCsvPart(part.parts);
+          if (nested) return nested;
         }
       }
+      return null;
     }
+
+    const attachmentPart = findCsvPart(payload.parts || []);
 
     if (!attachmentPart || !attachmentPart.body?.attachmentId) {
       console.warn(
         `[WARN] No holdings CSV attachment found in message ${messageId}`
       );
       // Log available parts for debugging
-      const partInfo = parts.map((p) => ({
+      const partInfo = (payload.parts || []).map((p: any) => ({
         filename: p.filename,
         mimeType: p.mimeType,
       }));
