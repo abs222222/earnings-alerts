@@ -232,9 +232,12 @@ async function runDailyCheck(): Promise<void> {
   const holdingsReports = filteredReports.filter((r) => holdingsSet.has(r.ticker.toUpperCase()));
   const watchlistReports = filteredReports.filter((r) => !holdingsSet.has(r.ticker.toUpperCase()));
 
+  // Treat 'unknown' time as premarket (safer: alert earlier rather than miss)
+  const isPremarket = (r: EarningsReport) => r.timeOfDay === 'premarket' || r.timeOfDay === 'unknown';
+
   // Section 1: Holdings - Pre-market today
   const holdingsPremarket = holdingsReports
-    .filter((r) => getReportDateStr(r) === todayStr && r.timeOfDay === 'premarket')
+    .filter((r) => getReportDateStr(r) === todayStr && isPremarket(r))
     .map(createAlertDue);
 
   // Section 2: Holdings - Before next open (post-market today + pre-market tomorrow)
@@ -243,8 +246,8 @@ async function runDailyCheck(): Promise<void> {
       const dateStr = getReportDateStr(r);
       // Post-market today
       if (dateStr === todayStr && r.timeOfDay === 'postmarket') return true;
-      // Pre-market tomorrow (day 1)
-      if (dateStr === day1Str && r.timeOfDay === 'premarket') return true;
+      // Pre-market (or unknown) tomorrow (day 1)
+      if (dateStr === day1Str && isPremarket(r)) return true;
       return false;
     })
     .map(createAlertDue);
@@ -257,15 +260,15 @@ async function runDailyCheck(): Promise<void> {
       if (dateStr === day1Str && r.timeOfDay === 'postmarket') return true;
       // Day 2-4: both pre and post market
       if ([day2Str, day3Str, day4Str].includes(dateStr)) return true;
-      // Day 5: pre-market only
-      if (dateStr === day5Str && r.timeOfDay === 'premarket') return true;
+      // Day 5: pre-market (or unknown) only
+      if (dateStr === day5Str && isPremarket(r)) return true;
       return false;
     })
     .map(createAlertDue);
 
   // Section 4: Watchlist - Pre-market today
   const watchlistPremarket = watchlistReports
-    .filter((r) => getReportDateStr(r) === todayStr && r.timeOfDay === 'premarket')
+    .filter((r) => getReportDateStr(r) === todayStr && isPremarket(r))
     .map(createAlertDue);
 
   // Section 5: Watchlist - Next 2 days (post-market today through pre-market day2)
@@ -276,8 +279,8 @@ async function runDailyCheck(): Promise<void> {
       if (dateStr === todayStr && r.timeOfDay === 'postmarket') return true;
       // Day 1: both pre and post market
       if (dateStr === day1Str) return true;
-      // Day 2: pre-market only
-      if (dateStr === day2Str && r.timeOfDay === 'premarket') return true;
+      // Day 2: pre-market (or unknown) only
+      if (dateStr === day2Str && isPremarket(r)) return true;
       return false;
     })
     .map(createAlertDue);
