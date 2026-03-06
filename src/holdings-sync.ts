@@ -22,6 +22,32 @@ import { writeHoldingsToSheet, overwriteKronosHoldings } from './sheets';
 
 // Configuration
 const HOLDINGS_EMAIL_SUBJECT = 'Clockwise Capital LLC ETF Holdings Report';
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 30_000; // 30 seconds
+
+/**
+ * Retry an async function with exponential backoff on transient errors (5xx, network)
+ */
+async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      const msg = error?.message || String(error);
+      const status = error?.code || error?.status || error?.response?.status;
+      const isTransient = status >= 500 || msg.includes('502') || msg.includes('503') ||
+        msg.includes('ECONNRESET') || msg.includes('ETIMEDOUT') || msg.includes('socket hang up');
+
+      if (!isTransient || attempt === MAX_RETRIES) {
+        throw error;
+      }
+      const delay = RETRY_DELAY_MS * attempt;
+      console.warn(`[${label}] Attempt ${attempt}/${MAX_RETRIES} failed (${msg}). Retrying in ${delay / 1000}s...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error('Unreachable');
+}
 
 // CLI setup
 const program = new Command();
@@ -34,8 +60,8 @@ program
 const options = program.opts();
 
 // How many hours back to look for holdings emails
-// Covers 5pm-11pm EST window with buffer (workflow runs at 11pm EST)
-const MAX_EMAIL_AGE_HOURS = 8;
+// 18h covers: normal midnight run (email ~3-7h old) + manual morning rerun (email ~11-15h old)
+const MAX_EMAIL_AGE_HOURS = 18;
 
 /**
  * Search Gmail for recent holdings emails (within last 8 hours)
@@ -243,11 +269,11 @@ async function main(): Promise<void> {
   }
 
   console.log(`\n[Step 4] Writing to Google Sheet...`);
-  const tabName = await writeHoldingsToSheet(rows, tabDate);
+  const tabName = await withRetry('Write holdings', () => writeHoldingsToSheet(rows, tabDate));
 
   // Step 5: Overwrite Kronos Dashboard holdings tab
   console.log(`\n[Step 5] Overwriting Kronos Dashboard holdings...`);
-  await overwriteKronosHoldings(rows);
+  await withRetry('Kronos overwrite', () => overwriteKronosHoldings(rows));
 
   console.log('\n========================================');
   console.log(`SUCCESS: Holdings written to tab "${tabName}"`);
