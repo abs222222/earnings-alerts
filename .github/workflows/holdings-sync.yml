@@ -2,9 +2,9 @@ name: Holdings Sync
 
 on:
   schedule:
-    # 11:00 PM EST = 4:00 UTC next day (EST is UTC-5)
+    # 11:00 PM EDT = 3:00 UTC next day (EDT is UTC-4)
     # Runs Mon-Fri evenings (Tue-Sat UTC)
-    - cron: '0 4 * * 2-6'
+    - cron: '0 3 * * 2-6'
 
   # Allow manual trigger
   workflow_dispatch:
