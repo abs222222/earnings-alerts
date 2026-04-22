@@ -537,12 +537,15 @@ export async function writeHoldingsToSheet(data: string[][], tabDate: string): P
     (s) => s.properties?.title
   ) || [];
 
-  // Create unique tab name
-  let tabName = tabDate;
-  let counter = 1;
-  while (existingTabs.includes(tabName)) {
-    tabName = `${tabDate}_${counter}`;
-    counter++;
+  // Idempotent: if a tab for this exact date already exists, skip re-creation.
+  // This runs twice per day (9:30 PM EDT primary + 10:30 PM EDT fallback). When
+  // the primary succeeds, the fallback would otherwise create "2026-04-21_1"
+  // style duplicates. The separate overwriteKronosHoldings step downstream is
+  // already idempotent.
+  const tabName = tabDate;
+  if (existingTabs.includes(tabName)) {
+    console.log(`Tab "${tabName}" already exists — skipping archive write (idempotent).`);
+    return tabName;
   }
 
   // Create the new tab
