@@ -180,6 +180,27 @@ async function downloadHoldingsCSV(messageId: string): Promise<string | null> {
 }
 
 /**
+ * Derive the YYYY-MM-DD tab name from the CSV's Date column (first data row).
+ * USBFS files use MM/DD/YYYY in the Date column; that's the trade-ready date
+ * (T+1 from the close the file represents).
+ */
+function csvDateToTabName(rows: string[][]): string {
+  if (rows.length < 2) {
+    throw new Error('CSV has no data rows');
+  }
+  const dateIdx = rows[0].indexOf('Date');
+  if (dateIdx < 0) {
+    throw new Error(`CSV missing "Date" column. Header: ${rows[0].join(',')}`);
+  }
+  const raw = rows[1][dateIdx];
+  const m = raw?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) {
+    throw new Error(`Unexpected Date column format: "${raw}". Expected MM/DD/YYYY.`);
+  }
+  return `${m[3]}-${m[1]}-${m[2]}`;
+}
+
+/**
  * Parse CSV content into 2D array
  */
 function parseCSV(csvContent: string): string[][] {
@@ -259,7 +280,13 @@ async function main(): Promise<void> {
   }
 
   // Step 4: Write to Google Sheet
-  const tabDate = format(emailInfo.date, 'yyyy-MM-dd');
+  // Use the CSV's own Date column for the tab name. Email arrival timestamp
+  // (used previously) shifts to the next UTC date when USBFS sends late evening
+  // ET (e.g. 8:48 PM ET = 00:48 UTC), causing two consecutive sends to land on
+  // the same UTC date and the second one to be silently skipped as a duplicate
+  // tab. The CSV's Date column is the trade-ready date USBFS stamps in the file
+  // itself, so it's both timezone-stable and semantically correct.
+  const tabDate = csvDateToTabName(rows);
 
   if (options.dryRun) {
     console.log(`\n[Step 4] Would write ${rows.length} rows to tab "${tabDate}"`);
