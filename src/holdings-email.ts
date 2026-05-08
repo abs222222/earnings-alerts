@@ -296,6 +296,7 @@ export async function getHoldingsFromEmail(): Promise<string[]> {
     if (emailDate) {
       console.log(
         `Processing holdings email from: ${emailDate.toLocaleDateString('en-US', {
+          timeZone: 'America/New_York',
           weekday: 'long',
           year: 'numeric',
           month: 'long',
@@ -318,7 +319,7 @@ export async function getHoldingsFromEmail(): Promise<string[]> {
       continue;
     }
 
-    console.log(`Using holdings from ${emailDate?.toLocaleDateString() || 'email'}`);
+    console.log(`Using holdings from ${emailDate?.toLocaleDateString('en-US', { timeZone: 'America/New_York' }) || 'email'}`);
     console.log(`Holdings tickers: ${tickers.slice(0, 10).join(', ')}${tickers.length > 10 ? '...' : ''}`);
     console.log('---\n');
 
