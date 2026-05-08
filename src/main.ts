@@ -17,6 +17,21 @@ import { format } from 'date-fns';
 // Load environment variables
 dotenv.config();
 
+/**
+ * Format a Date as YYYY-MM-DD in America/New_York. Used for dedup keys and
+ * trading-day comparisons against report dates from the earnings sheet
+ * (which are ET-anchored). Stable across runner timezone (GHA = UTC).
+ * date-fns format(d, 'yyyy-MM-dd') uses runner-local TZ and would drift.
+ */
+function formatNYDate(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
 // Import modules
 import { isTradingDay } from './calendar';
 import { getHoldingsFromEmail } from './holdings-email';
@@ -85,7 +100,7 @@ function logError(message: string): void {
 
 async function runDailyCheck(): Promise<void> {
   const today = new Date();
-  const todayStr = format(today, 'yyyy-MM-dd');
+  const todayStr = formatNYDate(today);
   const todayDisplay = format(today, 'EEEE, MMMM d, yyyy');
 
   log('========================================');
@@ -202,15 +217,15 @@ async function runDailyCheck(): Promise<void> {
   const holdingsSet = new Set(holdingsTickers.map((t) => t.toUpperCase()));
   // todayStr already defined at top of function
   const day1 = getNextTradingDay(today);
-  const day1Str = format(day1, 'yyyy-MM-dd');
+  const day1Str = formatNYDate(day1);
   const day2 = getNextTradingDay(day1);
-  const day2Str = format(day2, 'yyyy-MM-dd');
+  const day2Str = formatNYDate(day2);
   const day3 = getNextTradingDay(day2);
-  const day3Str = format(day3, 'yyyy-MM-dd');
+  const day3Str = formatNYDate(day3);
   const day4 = getNextTradingDay(day3);
-  const day4Str = format(day4, 'yyyy-MM-dd');
+  const day4Str = formatNYDate(day4);
   const day5 = getNextTradingDay(day4);
-  const day5Str = format(day5, 'yyyy-MM-dd');
+  const day5Str = formatNYDate(day5);
 
   // Helper to create AlertDue from report
   function createAlertDue(report: EarningsReport): AlertDue {
@@ -223,9 +238,12 @@ async function runDailyCheck(): Promise<void> {
     };
   }
 
-  // Helper to get report date string
+  // Helper to get report date string. Used to compare against todayStr /
+  // day1Str / etc which are all formatNYDate-rendered, so this MUST also
+  // render in America/New_York or the equality checks fail across UTC
+  // midnight.
   function getReportDateStr(report: EarningsReport): string {
-    return format(report.reportDate, 'yyyy-MM-dd');
+    return formatNYDate(report.reportDate);
   }
 
   // Separate reports into holdings vs watchlist

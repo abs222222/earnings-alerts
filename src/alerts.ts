@@ -19,6 +19,21 @@ const DATA_DIR = join(__dirname, '..', 'data');
 const SENT_ALERTS_FILE = join(DATA_DIR, 'sent-alerts.json');
 
 /**
+ * Format a Date as YYYY-MM-DD in America/New_York. Used for dedup keys
+ * (sent-alerts.json reportDate field, comparison against today/dayN strings
+ * in main.ts). The earnings sheet stores report dates in ET; this keeps the
+ * formatted key stable regardless of runner timezone (GHA = UTC).
+ */
+function formatNYDate(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+/**
  * Time ranges for premarket and postmarket (24-hour format)
  * Premarket: 5:00am - 9:30am
  * Postmarket: 4:00pm - 8:00pm
@@ -420,7 +435,7 @@ export function hasAlertBeenSent(
   alertDaysBefore?: number
 ): boolean {
   const sentAlerts = loadSentAlerts();
-  const reportDateStr = format(reportDate, 'yyyy-MM-dd');
+  const reportDateStr = formatNYDate(reportDate);
   const tickerUpper = ticker.toUpperCase();
 
   return sentAlerts.some((alert) => {
@@ -450,7 +465,7 @@ export function markAlertSent(
   alertDaysBefore?: number
 ): void {
   const sentAlerts = loadSentAlerts();
-  const reportDateStr = format(reportDate, 'yyyy-MM-dd');
+  const reportDateStr = formatNYDate(reportDate);
 
   const newAlert: SentAlert & { alertDaysBefore?: number } = {
     ticker: ticker.toUpperCase(),
@@ -486,7 +501,7 @@ export function filterUnsentAlerts(
 
     if (alreadySent) {
       console.log(
-        `[SKIP] Alert already sent for ${alert.report.ticker} (report date: ${format(alert.report.reportDate, 'yyyy-MM-dd')})`
+        `[SKIP] Alert already sent for ${alert.report.ticker} (report date: ${formatNYDate(alert.report.reportDate)})`
       );
     }
 
@@ -504,8 +519,10 @@ export function filterUnsentAlerts(
  */
 export function cleanupOldAlerts(daysToKeep = 30): number {
   const sentAlerts = loadSentAlerts();
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+  // Use ms arithmetic instead of setDate(getDate() - n) so the cutoff is
+  // independent of the runner's local timezone. Date.now() is timezone-free
+  // (epoch milliseconds); subtracting days*24h*60m*60s*1000ms is exact.
+  const cutoffDate = new Date(Date.now() - daysToKeep * 24 * 60 * 60 * 1000);
 
   const originalCount = sentAlerts.length;
   const filteredAlerts = sentAlerts.filter((alert) => {
