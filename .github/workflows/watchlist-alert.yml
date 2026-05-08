@@ -31,15 +31,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Send watchlist alert email
+      # Decode Google OAuth credentials to disk. src/google-auth.ts reads from
+      # ~/.claude/code-executor/google_credentials.json + google_token.json
+      # (file paths, not env vars). Same setup pattern as daily-check.yml and
+      # holdings-sync.yml.
+      - name: Setup Google credentials
         env:
           GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
           GOOGLE_TOKEN_B64: ${{ secrets.GOOGLE_TOKEN_B64 }}
         run: |
+          mkdir -p ~/.claude/code-executor
+          echo "$GOOGLE_CREDENTIALS_B64" | base64 -d > ~/.claude/code-executor/google_credentials.json
+          echo "$GOOGLE_TOKEN_B64" | base64 -d > ~/.claude/code-executor/google_token.json
+
+      # Pass payload values via env so a malicious dispatch payload can't
+      # break out of the shell. Only Kronos can dispatch (PAT-gated), so this
+      # is hardening rather than active threat mitigation.
+      - name: Send watchlist alert email
+        env:
+          TICKER: ${{ github.event.client_payload.ticker }}
+          PRICE: ${{ github.event.client_payload.current_price }}
+          ALERT: ${{ github.event.client_payload.alert_price }}
+          PROXIMITY_PCT: ${{ github.event.client_payload.proximity_pct }}
+          LINK: ${{ github.event.client_payload.link }}
+          RECIPIENTS: ${{ join(github.event.client_payload.recipients, ',') }}
+        run: |
           npx ts-node src/watchlist-alert-send.ts \
-            --ticker "${{ github.event.client_payload.ticker }}" \
-            --price "${{ github.event.client_payload.current_price }}" \
-            --alert "${{ github.event.client_payload.alert_price }}" \
-            --proximity-pct "${{ github.event.client_payload.proximity_pct }}" \
-            --link "${{ github.event.client_payload.link }}" \
-            --recipients "${{ join(github.event.client_payload.recipients, ',') }}"
+            --ticker "$TICKER" \
+            --price "$PRICE" \
+            --alert "$ALERT" \
+            --proximity-pct "$PROXIMITY_PCT" \
+            --link "$LINK" \
+            --recipients "$RECIPIENTS"
+
+      - name: Cleanup credentials
+        if: always()
+        run: |
+          rm -rf ~/.claude/code-executor

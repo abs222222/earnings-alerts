@@ -25,7 +25,7 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-import { sendEmail } from './email';
+import { sendEmail, escapeHtml } from './email';
 
 const program = new Command();
 program
@@ -61,18 +61,23 @@ if (!Number.isFinite(price) || !Number.isFinite(alert) || !Number.isFinite(proxi
 
 const subject = `[Watchlist] ${ticker} hit alert: $${price.toFixed(2)} (alert $${alert.toFixed(2)}, ${proximityPct >= 0 ? '+' : ''}${proximityPct.toFixed(1)}%)`;
 
+// Escape free-form payload fields. Numeric fields are already rendered via
+// .toFixed() on Number.isFinite-validated values, so they can't emit HTML.
+const safeTicker = escapeHtml(ticker);
+const safeLink = escapeHtml(link);
+
 const html = `
 <!DOCTYPE html>
 <html>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; max-width: 560px; margin: 0 auto; padding: 16px;">
   <div style="border-left: 4px solid #10b981; padding: 12px 16px; background: #ecfdf5; border-radius: 4px;">
-    <h2 style="margin: 0 0 8px 0; color: #047857; font-size: 18px;">${ticker} hit alert</h2>
+    <h2 style="margin: 0 0 8px 0; color: #047857; font-size: 18px;">${safeTicker} hit alert</h2>
     <p style="margin: 4px 0;"><strong>Current price:</strong> $${price.toFixed(2)}</p>
     <p style="margin: 4px 0;"><strong>Alert price:</strong> $${alert.toFixed(2)}</p>
     <p style="margin: 4px 0;"><strong>Distance from alert:</strong> ${proximityPct >= 0 ? '+' : ''}${proximityPct.toFixed(2)}%</p>
   </div>
   <p style="margin-top: 16px;">
-    <a href="${link}" style="background: #2563eb; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; display: inline-block;">Open watchlist</a>
+    <a href="${safeLink}" style="background: #2563eb; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; display: inline-block;">Open watchlist</a>
   </p>
   <p style="margin-top: 16px; font-size: 12px; color: #6b7280;">
     Sent by Kronos watchlist alerts. Edit the alert price on /stock-input.
