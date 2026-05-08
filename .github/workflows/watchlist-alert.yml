@@ -1,0 +1,70 @@
+name: Watchlist Alert
+
+# Triggered by Kronos via repository_dispatch when a watchlist ticker enters
+# the green tier (current price <= alert price). Kronos owns dedup state; this
+# workflow just sends a single email per dispatch.
+#
+# Payload schema (from Kronos lib/services/notify.ts dispatchEmailAlert):
+#   {
+#     ticker: string,
+#     current_price: number,
+#     alert_price: number,
+#     proximity_pct: number,
+#     link: string,
+#     recipients: string[]
+#   }
+
+on:
+  repository_dispatch:
+    types: [watchlist-alert]
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Decode Google OAuth credentials to disk. src/google-auth.ts reads from
+      # ~/.claude/code-executor/google_credentials.json + google_token.json
+      # (file paths, not env vars). Same setup pattern as daily-check.yml and
+      # holdings-sync.yml.
+      - name: Setup Google credentials
+        env:
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
+          GOOGLE_TOKEN_B64: ${{ secrets.GOOGLE_TOKEN_B64 }}
+        run: |
+          mkdir -p ~/.claude/code-executor
+          echo "$GOOGLE_CREDENTIALS_B64" | base64 -d > ~/.claude/code-executor/google_credentials.json
+          echo "$GOOGLE_TOKEN_B64" | base64 -d > ~/.claude/code-executor/google_token.json
+
+      # Pass payload values via env so a malicious dispatch payload can't
+      # break out of the shell. Only Kronos can dispatch (PAT-gated), so this
+      # is hardening rather than active threat mitigation.
+      - name: Send watchlist alert email
+        env:
+          TICKER: ${{ github.event.client_payload.ticker }}
+          PRICE: ${{ github.event.client_payload.current_price }}
+          ALERT: ${{ github.event.client_payload.alert_price }}
+          PROXIMITY_PCT: ${{ github.event.client_payload.proximity_pct }}
+          LINK: ${{ github.event.client_payload.link }}
+          RECIPIENTS: ${{ join(github.event.client_payload.recipients, ',') }}
+        run: |
+          npx ts-node src/watchlist-alert-send.ts \
+            --ticker "$TICKER" \
+            --price "$PRICE" \
+            --alert "$ALERT" \
+            --proximity-pct "$PROXIMITY_PCT" \
+            --link "$LINK" \
+            --recipients "$RECIPIENTS"
+
+      - name: Cleanup credentials
+        if: always()
+        run: |
+          rm -rf ~/.claude/code-executor
