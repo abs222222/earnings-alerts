@@ -30,13 +30,20 @@ import { sendEmail, escapeHtml } from './email';
 const program = new Command();
 program
   .name('watchlist-alert-send')
-  .description('Send a single watchlist buy-zone alert email')
+  .description('Send a single watchlist buy-zone or sell-zone alert email')
   .requiredOption('--ticker <ticker>', 'Ticker symbol (e.g. AAPL)')
   .requiredOption('--price <price>', 'Current market price', parseFloat)
   .requiredOption('--alert <alert>', 'Alert price set in /stock-input', parseFloat)
   .requiredOption('--proximity-pct <pct>', 'Current price vs alert as a percent', parseFloat)
   .requiredOption('--link <url>', 'Watchlist link to embed in the email')
   .requiredOption('--recipients <emails>', 'Comma-separated email addresses')
+  .requiredOption('--alert-type <type>', 'buy or sell', (v) => {
+    const lower = String(v).toLowerCase()
+    if (lower !== 'buy' && lower !== 'sell') {
+      throw new Error(`--alert-type must be 'buy' or 'sell', got '${v}'`)
+    }
+    return lower
+  })
   .option('--dry-run', 'Build the email but do not send', false)
   .parse();
 
@@ -53,16 +60,21 @@ const price = Number(opts.price);
 const alert = Number(opts.alert);
 const proximityPct = Number(opts.proximityPct);
 const link = String(opts.link);
+const alertType: 'buy' | 'sell' = opts.alertType;
 
 if (!Number.isFinite(price) || !Number.isFinite(alert) || !Number.isFinite(proximityPct)) {
   console.error('price, alert, and proximity-pct must be finite numbers.');
   process.exit(1);
 }
 
-const subject = `[Watchlist] ${ticker} hit alert: $${price.toFixed(2)} (alert $${alert.toFixed(2)}, ${proximityPct >= 0 ? '+' : ''}${proximityPct.toFixed(1)}%)`;
+// Visual + copy differs by alert type. Buy = green/emerald (entered cheap
+// zone, opportunity to add). Sell = red/rose (hit target, consider trimming).
+const theme = alertType === 'buy'
+  ? { border: '#10b981', bg: '#ecfdf5', heading: '#047857', label: 'Buy alert', verb: 'entered buy zone', distance: 'Distance below buy alert' }
+  : { border: '#ef4444', bg: '#fef2f2', heading: '#b91c1c', label: 'Sell alert', verb: 'hit sell target',    distance: 'Distance above sell alert' };
 
-// Escape free-form payload fields. Numeric fields are already rendered via
-// .toFixed() on Number.isFinite-validated values, so they can't emit HTML.
+const subject = `[Watchlist] ${ticker} ${theme.verb}: $${price.toFixed(2)} (${theme.label.toLowerCase()} $${alert.toFixed(2)}, ${proximityPct >= 0 ? '+' : ''}${proximityPct.toFixed(1)}%)`;
+
 const safeTicker = escapeHtml(ticker);
 const safeLink = escapeHtml(link);
 
@@ -70,17 +82,17 @@ const html = `
 <!DOCTYPE html>
 <html>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; max-width: 560px; margin: 0 auto; padding: 16px;">
-  <div style="border-left: 4px solid #10b981; padding: 12px 16px; background: #ecfdf5; border-radius: 4px;">
-    <h2 style="margin: 0 0 8px 0; color: #047857; font-size: 18px;">${safeTicker} hit alert</h2>
+  <div style="border-left: 4px solid ${theme.border}; padding: 12px 16px; background: ${theme.bg}; border-radius: 4px;">
+    <h2 style="margin: 0 0 8px 0; color: ${theme.heading}; font-size: 18px;">${safeTicker} ${theme.verb}</h2>
     <p style="margin: 4px 0;"><strong>Current price:</strong> $${price.toFixed(2)}</p>
-    <p style="margin: 4px 0;"><strong>Alert price:</strong> $${alert.toFixed(2)}</p>
-    <p style="margin: 4px 0;"><strong>Distance from alert:</strong> ${proximityPct >= 0 ? '+' : ''}${proximityPct.toFixed(2)}%</p>
+    <p style="margin: 4px 0;"><strong>${theme.label}:</strong> $${alert.toFixed(2)}</p>
+    <p style="margin: 4px 0;"><strong>${theme.distance}:</strong> ${proximityPct >= 0 ? '+' : ''}${proximityPct.toFixed(2)}%</p>
   </div>
   <p style="margin-top: 16px;">
     <a href="${safeLink}" style="background: #2563eb; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; display: inline-block;">Open watchlist</a>
   </p>
   <p style="margin-top: 16px; font-size: 12px; color: #6b7280;">
-    Sent by Kronos watchlist alerts. Edit the alert price on /stock-input.
+    Sent by Kronos watchlist alerts. Edit the ${theme.label.toLowerCase()} price on /stock-input.
   </p>
 </body>
 </html>

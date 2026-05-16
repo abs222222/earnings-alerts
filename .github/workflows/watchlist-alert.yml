@@ -11,7 +11,8 @@ name: Watchlist Alert
 #     alert_price: number,
 #     proximity_pct: number,
 #     link: string,
-#     recipients: string[]
+#     recipients: string[],
+#     alert_type: 'buy' | 'sell'
 #   }
 
 on:
@@ -55,6 +56,7 @@ jobs:
           PROXIMITY_PCT: ${{ github.event.client_payload.proximity_pct }}
           LINK: ${{ github.event.client_payload.link }}
           RECIPIENTS: ${{ join(github.event.client_payload.recipients, ',') }}
+          ALERT_TYPE: ${{ github.event.client_payload.alert_type }}
         run: |
           npx ts-node src/watchlist-alert-send.ts \
             --ticker "$TICKER" \
@@ -62,7 +64,8 @@ jobs:
             --alert "$ALERT" \
             --proximity-pct "$PROXIMITY_PCT" \
             --link "$LINK" \
-            --recipients "$RECIPIENTS"
+            --recipients "$RECIPIENTS" \
+            --alert-type "$ALERT_TYPE"
 
       - name: Cleanup credentials
         if: always()
