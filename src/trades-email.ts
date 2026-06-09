@@ -19,6 +19,7 @@ const TRADES_EMAIL_SUBJECT = 'Clockwise Trades';
 const TRADES_EMAIL_SENDER = 'james@clockwisecapital.com';
 
 export type RawFill = {
+  row_index?: number;
   account?: string;
   trade_date: string;
   settle_date?: string;
@@ -98,7 +99,10 @@ export async function parseTradesXlsx(buffer: Buffer): Promise<RawFill[]> {
   await wb.xlsx.load(buffer as any);
 
   const fills: RawFill[] = [];
+  let anyHeaderFound = false;
+  let anyDataRowsSeen = false;
   for (const ws of wb.worksheets) {
+    if (ws.rowCount > 1) anyDataRowsSeen = true;
     // Header row = the first row containing TRAN CODE + EXEC PRICE
     let headerRowIdx = -1;
     const colOf: Record<string, number> = {};
@@ -111,6 +115,7 @@ export async function parseTradesXlsx(buffer: Buffer): Promise<RawFill[]> {
       }
     }
     if (headerRowIdx === -1) continue;
+    anyHeaderFound = true;
 
     const find = (...needles: string[]): number => {
       for (const [name, idx] of Object.entries(colOf)) {
@@ -143,6 +148,7 @@ export async function parseTradesXlsx(buffer: Buffer): Promise<RawFill[]> {
       if (!tradeDate) continue;
       const fees = [iOther, iExch, iSec].reduce((s, i) => s + (i > -1 ? (num(row[i]) ?? 0) : 0), 0);
       fills.push({
+        row_index: r,
         account: iAcct > -1 ? cellText(row[iAcct]) : undefined,
         trade_date: tradeDate,
         settle_date: iSettle > -1 ? (isoDate(row[iSettle]) ?? undefined) : undefined,
@@ -153,6 +159,9 @@ export async function parseTradesXlsx(buffer: Buffer): Promise<RawFill[]> {
         comments: iComments > -1 ? cellText(row[iComments]) : undefined,
       });
     }
+  }
+  if (!anyHeaderFound && anyDataRowsSeen) {
+    console.error(`[ERROR] No recognizable trade header (TRAN CODE + EXEC PRICE) in ${wb.worksheets.length} worksheet(s) — blotter format may have changed. Parsed 0 fills from a non-empty workbook.`);
   }
   return fills;
 }

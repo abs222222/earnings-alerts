@@ -42,7 +42,10 @@ async function main() {
     if (!buf) { console.log(`  ${messageId}: no xlsx, skipping`); continue; }
     const fills = await parseTradesXlsx(buf);
     console.log(`  ${messageId}: parsed ${fills.length} fills`);
-    if (fills.length === 0) continue;
+    if (fills.length === 0) {
+      console.warn(`  ${messageId}: downloaded a workbook but parsed 0 fills — possible blotter format change (check parser error above)`);
+      continue;
+    }
     totalFills += fills.length;
 
     if (dryRun) {
@@ -66,6 +69,8 @@ async function main() {
         new_fills: json.new_fills, created: json.created, reconciled: json.reconciled,
         scaled: json.scaled, closed: json.closed, skipped: json.skipped?.length ?? 0,
       }));
+      if (json.skipped?.length) console.warn(`  ${messageId}: ${json.skipped.length} fill(s) skipped:`, json.skipped);
+      if (json.sheet_mirror_ok === false) console.warn(`  ${messageId}: WARNING sheet mirror failed:`, JSON.stringify(json.sheet_mirror));
     }
   }
 
