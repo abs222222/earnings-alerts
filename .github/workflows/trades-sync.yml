@@ -1,0 +1,48 @@
+name: Trades Sync
+
+on:
+  schedule:
+    # James sends "Clockwise Trades" ~4:30-5:00 PM ET. Primary run 6 PM EDT
+    # (22:00 UTC), weekday catch-up 7:30 PM EDT (23:30 UTC) for late/extra sends.
+    - cron: '0 22 * * 1-5'
+    - cron: '30 23 * * 1-5'
+
+  workflow_dispatch:
+
+jobs:
+  sync-trades:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Google credentials
+        env:
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
+          GOOGLE_TOKEN_B64: ${{ secrets.GOOGLE_TOKEN_B64 }}
+        run: |
+          mkdir -p ~/.claude/code-executor
+          echo "$GOOGLE_CREDENTIALS_B64" | base64 -d > ~/.claude/code-executor/google_credentials.json
+          echo "$GOOGLE_TOKEN_B64" | base64 -d > ~/.claude/code-executor/google_token.json
+
+      - name: Ingest trades into Kronos
+        run: npm run trades-sync
+        env:
+          NODE_ENV: production
+          INGEST_URL: ${{ secrets.INGEST_URL }}
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+
+      - name: Cleanup credentials
+        if: always()
+        run: |
+          rm -rf ~/.claude/code-executor
