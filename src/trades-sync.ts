@@ -23,12 +23,23 @@ async function main() {
   const dryRun = process.argv.includes('--dry-run');
   console.log(`\n=== Clockwise Trades Sync ${dryRun ? '(dry run)' : ''} ===`);
 
-  const messageIds = await searchTradesEmails(3);
+  // Explicit MESSAGE_IDS (comma-separated, in chronological order) override the
+  // search — used for backfills. Otherwise search the last DAYS_BACK days and
+  // process oldest-first so a multi-day run nets in trade-date order.
+  const explicit = process.env.MESSAGE_IDS?.trim();
+  let messageIds: string[];
+  if (explicit) {
+    messageIds = explicit.split(',').map(s => s.trim()).filter(Boolean);
+    console.log(`Using ${messageIds.length} explicit message id(s).`);
+  } else {
+    const daysBack = Number(process.env.DAYS_BACK || 3);
+    messageIds = (await searchTradesEmails(daysBack)).reverse();
+  }
   if (messageIds.length === 0) {
-    console.log('No trades emails found in the last 3 days.');
+    console.log('No trades emails found.');
     return;
   }
-  console.log(`Found ${messageIds.length} trades email(s).`);
+  console.log(`Processing ${messageIds.length} trades email(s).`);
 
   const secret = process.env.INGEST_SECRET;
   if (!dryRun && !secret) {
