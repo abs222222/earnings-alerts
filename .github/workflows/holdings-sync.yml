@@ -2,13 +2,14 @@ name: Holdings Sync
 
 on:
   schedule:
-    # Primary: 9:30 PM EDT = 1:30 UTC next day
-    # Runs Mon-Fri evenings (Tue-Sat UTC)
-    # USBFS email arrives ~7:30 PM ET, leaving ~2hr buffer for late sends.
-    - cron: '30 1 * * 2-6'
-    # Fallback: 10:30 PM EDT = 2:30 UTC next day
-    # Catches days where the primary run finds no email yet (USBFS delay).
-    - cron: '30 2 * * 2-6'
+    # NOTE: the reliable on-time trigger is the cron-job.org watchdog, which
+    # dispatches this workflow at 8:00 PM ET (timezone-aware, DST-safe). GitHub's
+    # free-tier scheduler delays these crons by hours, so they act as overnight
+    # backups only. USBFS email arrives ~7:36 PM ET.
+    # Primary: 8:00 PM EDT = 0:00 UTC next day. Runs Mon-Fri evenings (Tue-Sat UTC).
+    - cron: '0 0 * * 2-6'
+    # Fallback: 9:00 PM EDT = 1:00 UTC next day. Catches a late USBFS send.
+    - cron: '0 1 * * 2-6'
 
   # Allow manual trigger
   workflow_dispatch:
