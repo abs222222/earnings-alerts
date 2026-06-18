@@ -1,0 +1,44 @@
+name: RGL Sync (Tax)
+
+on:
+  schedule:
+    # Tidal "RGL" is monthly, delivered early in the following month. Run on the
+    # 5th at 10 AM EDT (14:00 UTC). Backed up by a cron-job.org watchdog.
+    - cron: '0 14 5 * *'
+  workflow_dispatch:
+
+jobs:
+  sync-rgl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Google credentials
+        env:
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
+          GOOGLE_TOKEN_B64: ${{ secrets.GOOGLE_TOKEN_B64 }}
+        run: |
+          mkdir -p ~/.claude/code-executor
+          echo "$GOOGLE_CREDENTIALS_B64" | base64 -d > ~/.claude/code-executor/google_credentials.json
+          echo "$GOOGLE_TOKEN_B64" | base64 -d > ~/.claude/code-executor/google_token.json
+
+      - name: Ingest RGL into Kronos
+        run: npm run rgl-sync
+        env:
+          NODE_ENV: production
+          # INGEST_URL defaults to the prod /api/tax/ingest-rgl in the script.
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -rf ~/.claude/code-executor
