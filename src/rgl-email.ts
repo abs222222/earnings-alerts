@@ -52,20 +52,14 @@ export async function downloadXlsxAttachment(messageId: string): Promise<Buffer 
   const payload = msg.data.payload
   if (!payload) return null
 
-  function findXlsx(parts: any[]): any {
-    for (const part of parts ?? []) {
-      const fn = (part.filename || '').toLowerCase()
-      if (fn.endsWith('.xlsx') && /rgl/.test(fn) && part.body?.attachmentId) return part
-    }
-    // fall back to any .xlsx if no rgl-named match
-    for (const part of parts ?? []) {
-      const fn = (part.filename || '').toLowerCase()
-      if (fn.endsWith('.xlsx') && part.body?.attachmentId) return part
-      if (part.parts) { const n = findXlsx(part.parts); if (n) return n }
-    }
-    return null
+  const collect = (parts: any[], acc: any[] = []): any[] => {
+    for (const p of parts ?? []) { if (p.body?.attachmentId) acc.push(p); if (p.parts) collect(p.parts, acc) }
+    return acc
   }
-  const part = findXlsx(payload.parts || [])
+  // Prefer the RGL-named .xlsx (recursively), else any .xlsx — so a nested RGL file isn't
+  // missed and an unrelated top-level .xlsx isn't grabbed by mistake.
+  const xlsx = collect(payload.parts || []).filter(p => (p.filename || '').toLowerCase().endsWith('.xlsx'))
+  const part = xlsx.find(p => /rgl/.test((p.filename || '').toLowerCase())) || xlsx[0] || null
   if (!part?.body?.attachmentId) { console.warn(`[WARN] No .xlsx attachment in ${messageId}`); return null }
 
   const att = await gmail.users.messages.attachments.get({ userId: 'me', messageId, id: part.body.attachmentId })

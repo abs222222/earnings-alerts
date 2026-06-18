@@ -57,15 +57,14 @@ export async function downloadXlsAttachment(messageId: string): Promise<Buffer |
   const payload = msg.data.payload
   if (!payload) return null
 
-  function findXls(parts: any[]): any {
-    for (const part of parts ?? []) {
-      const fn = (part.filename || '').toLowerCase()
-      if ((fn.endsWith('.xls') || fn.endsWith('.xml')) && part.body?.attachmentId) return part
-      if (part.parts) { const n = findXls(part.parts); if (n) return n }
-    }
-    return null
+  const collect = (parts: any[], acc: any[] = []): any[] => {
+    for (const p of parts ?? []) { if (p.body?.attachmentId) acc.push(p); if (p.parts) collect(p.parts, acc) }
+    return acc
   }
-  const part = findXls(payload.parts || [])
+  // Prefer the Position Details .xls; fall back to any .xls. (Don't match .xml — avoids
+  // grabbing an unrelated signature/smime part.)
+  const xls = collect(payload.parts || []).filter(p => (p.filename || '').toLowerCase().endsWith('.xls'))
+  const part = xls.find(p => (p.filename || '').toLowerCase().includes('position')) || xls[0] || null
   if (!part?.body?.attachmentId) { console.warn(`[WARN] No .xls attachment in ${messageId}`); return null }
 
   const att = await gmail.users.messages.attachments.get({ userId: 'me', messageId, id: part.body.attachmentId })
