@@ -14,6 +14,10 @@
     "holdings-sync:dry": "node node_modules/ts-node/dist/bin.js src/holdings-sync.ts --dry-run",
     "trades-sync": "node node_modules/ts-node/dist/bin.js src/trades-sync.ts",
     "trades-sync:dry": "node node_modules/ts-node/dist/bin.js src/trades-sync.ts --dry-run",
+    "positions-sync": "node node_modules/ts-node/dist/bin.js src/positions-sync.ts",
+    "positions-sync:dry": "node node_modules/ts-node/dist/bin.js src/positions-sync.ts --dry-run",
+    "rgl-sync": "node node_modules/ts-node/dist/bin.js src/rgl-sync.ts",
+    "rgl-sync:dry": "node node_modules/ts-node/dist/bin.js src/rgl-sync.ts --dry-run",
     "test": "jest"
   },
   "keywords": [
