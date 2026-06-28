@@ -2,8 +2,8 @@
  * Clockwise Trades Sync
  *
  * Pulls James's recent "Clockwise Trades" emails, parses each xlsx blotter,
- * and POSTs the fills to the Kronos ingest endpoint (which dedups + runs the
- * episode netting). Idempotent: re-running is safe (server dedups by fill_hash).
+ * and POSTs the fills to the Kronos ingest endpoint (which dedups them into
+ * trade_fills). Idempotent: re-running is safe (server dedups by fill_hash).
  *
  *   npm run trades-sync            # fetch + parse + POST
  *   npm run trades-sync -- --dry-run   # fetch + parse + print, no POST
@@ -77,8 +77,7 @@ async function main() {
       console.error(`  ${messageId}: ingest failed (HTTP ${res.status}): ${JSON.stringify(json)}`);
     } else {
       console.log(`  ${messageId}: ingested ->`, JSON.stringify({
-        new_fills: json.new_fills, created: json.created, reconciled: json.reconciled,
-        scaled: json.scaled, closed: json.closed, skipped: json.skipped?.length ?? 0,
+        received: json.received, new_fills: json.new_fills, skipped: json.skipped?.length ?? 0,
       }));
       if (json.skipped?.length) console.warn(`  ${messageId}: ${json.skipped.length} fill(s) skipped:`, json.skipped);
       if (json.sheet_mirror_ok === false) console.warn(`  ${messageId}: WARNING sheet mirror failed:`, JSON.stringify(json.sheet_mirror));
