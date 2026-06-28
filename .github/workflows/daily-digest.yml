@@ -1,0 +1,59 @@
+name: Daily Digest
+
+# Triggered by Kronos via repository_dispatch when the daily-report cron runs.
+# Kronos builds the full HTML body; this workflow just decodes and sends it.
+#
+# Payload schema (from Kronos lib/daily-report/send.ts dispatchDigestEmail):
+#   {
+#     slot: 'premarket' | 'postclose',
+#     subject: string,
+#     html_b64: string,   // base64-encoded HTML email body
+#     recipients: string[]
+#   }
+
+on:
+  repository_dispatch:
+    types: [daily-digest]
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Decode Google OAuth credentials to disk. src/google-auth.ts reads from
+      # ~/.claude/code-executor/google_credentials.json + google_token.json
+      # (file paths, not env vars). Same setup pattern as watchlist-alert.yml.
+      - name: Setup Google credentials
+        env:
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
+          GOOGLE_TOKEN_B64: ${{ secrets.GOOGLE_TOKEN_B64 }}
+        run: |
+          mkdir -p ~/.claude/code-executor
+          echo "$GOOGLE_CREDENTIALS_B64" | base64 -d > ~/.claude/code-executor/google_credentials.json
+          echo "$GOOGLE_TOKEN_B64" | base64 -d > ~/.claude/code-executor/google_token.json
+
+      # Pass payload values via env so a malicious dispatch payload can't break
+      # out of the shell. Only Kronos can dispatch (PAT-gated).
+      - name: Send daily digest email
+        env:
+          SUBJECT: ${{ github.event.client_payload.subject }}
+          HTML_B64: ${{ github.event.client_payload.html_b64 }}
+          RECIPIENTS: ${{ join(github.event.client_payload.recipients, ',') }}
+        run: |
+          npx ts-node src/daily-digest-send.ts \
+            --subject "$SUBJECT" \
+            --html-b64 "$HTML_B64" \
+            --recipients "$RECIPIENTS"
+
+      - name: Cleanup credentials
+        if: always()
+        run: |
+          rm -rf ~/.claude/code-executor
