@@ -1,0 +1,56 @@
+name: Tidal Sync
+
+on:
+  schedule:
+    # Tidal (Nick Ohm) sends the weekly "Position Details Report" Mon-Wed at
+    # irregular afternoon/evening times. Run every weekday evening 6:30 PM EDT
+    # (22:30 UTC) plus a next-morning 9 AM EDT (13:00 UTC) catch-up. The ingest
+    # replaces by snapshot_date and is idempotent, so re-runs are safe and a
+    # report is picked up within hours whichever day it lands.
+    - cron: '30 22 * * 1-5'
+    - cron: '0 13 * * 1-5'
+
+  workflow_dispatch:
+    inputs:
+      days_back:
+        description: 'How many days of Position Details emails to scan (backfill)'
+        required: false
+        default: '10'
+
+jobs:
+  sync-tidal:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Google credentials
+        env:
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
+          GOOGLE_TOKEN_B64: ${{ secrets.GOOGLE_TOKEN_B64 }}
+        run: |
+          mkdir -p ~/.claude/code-executor
+          echo "$GOOGLE_CREDENTIALS_B64" | base64 -d > ~/.claude/code-executor/google_credentials.json
+          echo "$GOOGLE_TOKEN_B64" | base64 -d > ~/.claude/code-executor/google_token.json
+
+      - name: Ingest Tidal Position Details into Kronos
+        run: npm run tidal-sync
+        env:
+          NODE_ENV: production
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          DAYS_BACK: ${{ github.event.inputs.days_back || '10' }}
+
+      - name: Cleanup credentials
+        if: always()
+        run: |
+          rm -rf ~/.claude/code-executor
