@@ -9,25 +9,32 @@
  *   npm run tidal-sync                # fetch + parse + POST the latest report(s)
  *   npm run tidal-sync -- --dry-run   # fetch + parse + print, no POST
  *
+ * Also syncs the monthly RGL (realized gain/loss) report -> /api/tax/ingest-rgl.
+ * In-kind lots are flagged straight from the file (In-Kind RGL column / Broker),
+ * and the ingest replaces by fiscal year, so re-running is safe.
+ *
  * Env:
  *   INGEST_URL_POSITIONS (default: prod Kronos /api/tax/ingest-positions)
+ *   INGEST_URL_RGL       (default: prod Kronos /api/tax/ingest-rgl)
  *   INGEST_SECRET        (required unless --dry-run)
  *   DAYS_BACK            (default 10 — covers the weekly cadence + delivery lag)
- *   MESSAGE_IDS          (comma-separated; backfill override, processed as given)
+ *   RGL_DAYS_BACK        (default 40 — the RGL is monthly)
+ *   MESSAGE_IDS          (comma-separated; position backfill override; skips RGL)
  *   Gmail OAuth via google_token.json (same as trades-sync / holdings-sync)
- *
- * RGL (monthly realized ledger) is intentionally NOT synced here yet — the
- * in-kind rule needs confirmation first (see parseRglXlsx). Phase 1b.
  */
 
 import {
-  searchPositionEmails, downloadAttachment, parsePositionsXls, dateFromFilename,
+  searchPositionEmails, searchRglEmails, downloadAttachment,
+  parsePositionsXls, parseRglXlsx, dateFromFilename,
 } from './tidal-email';
 
 const POSITIONS_URL = process.env.INGEST_URL_POSITIONS
   || 'https://kronos-internal-dashboard.vercel.app/api/tax/ingest-positions';
+const RGL_URL = process.env.INGEST_URL_RGL
+  || 'https://kronos-internal-dashboard.vercel.app/api/tax/ingest-rgl';
 
 const POSITION_FILE = /Position Details.*\.xls$/i;
+const RGL_FILE = /RGL.*\.xlsx$/i;
 
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
@@ -91,6 +98,55 @@ async function main() {
       console.log(`  ${messageId}: ingested -> snapshot ${json.snapshot_date}, ${json.lots_inserted} lots`);
     }
   }
+
+  // ---------- RGL (monthly realized ledger) ----------
+  // Skipped on an explicit MESSAGE_IDS position backfill (those ids are position emails).
+  if (!explicit) {
+    const rglDays = Number(process.env.RGL_DAYS_BACK || 40);
+    const rglIds = (await searchRglEmails(rglDays)).reverse();
+    if (rglIds.length === 0) {
+      console.log('No RGL emails found.');
+    } else {
+      console.log(`Processing ${rglIds.length} RGL email(s).`);
+    }
+    for (const messageId of rglIds) {
+      const dl = await downloadAttachment(messageId, RGL_FILE);
+      if (!dl) { console.log(`  ${messageId}: no RGL .xlsx, skipping`); continue; }
+      const fyEnd = dateFromFilename(dl.filename);
+      if (!fyEnd) { console.error(`  ${messageId}: cannot parse date from "${dl.filename}", skipping`); continue; }
+
+      let realized;
+      try {
+        realized = await parseRglXlsx(dl.buffer, fyEnd);
+      } catch (e) {
+        console.error(`  ${messageId}: RGL parse failed for ${dl.filename}:`, e instanceof Error ? e.message : e);
+        continue;
+      }
+      const ikSum = realized.filter(r => r.in_kind).reduce((s, r) => s + r.realized_gl, 0);
+      const total = realized.reduce((s, r) => s + r.realized_gl, 0);
+      console.log(`  ${messageId}: ${dl.filename} -> fy_end ${fyEnd}, ${realized.length} rows, ${realized.filter(r => r.in_kind).length} in-kind`);
+
+      if (dryRun) {
+        console.log(`    total realized ${total.toFixed(0)} | in-kind ${ikSum.toFixed(0)} | distributable ${(total - ikSum).toFixed(0)}`);
+        continue;
+      }
+
+      const res = await fetch(RGL_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-ingest-secret': secret as string },
+        body: JSON.stringify({ realized }),
+      });
+      const json: any = await res.json().catch(() => ({}));
+      if (json.skipped) {
+        console.log(`  ${messageId}: RGL skipped (stale): ${json.message}`);
+      } else if (!res.ok || !json.success) {
+        console.error(`  ${messageId}: RGL ingest failed (HTTP ${res.status}): ${JSON.stringify(json)}`);
+      } else {
+        console.log(`  ${messageId}: RGL ingested -> fy ${json.fy_start}..${json.fy_end}, ${json.rows_inserted} rows`);
+      }
+    }
+  }
+
   console.log('Done.');
 }
 

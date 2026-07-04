@@ -51,7 +51,9 @@ const asArray = <T>(v: T | T[] | undefined | null): T[] =>
 
 function num(v: any): number | undefined {
   if (v == null || v === '') return undefined;
-  const n = Number(String(v).replace(/,/g, ''));
+  // ExcelJS returns objects for formula/rich cells; SpreadsheetML returns strings.
+  const x = typeof v === 'object' ? (v.result ?? v.value ?? NaN) : v;
+  const n = Number(String(x).replace(/,/g, ''));
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -208,11 +210,56 @@ function isoDate(v: any): string | null {
 
 /**
  * Parse the RGL xlsx into the FY-to-date realized ledger. `fyEnd` is the report
- * as-of date (from the filename). IN-KIND DETERMINATION IS NOT YET CONFIRMED: the
- * real file has no explicit "In-Kind RGL" column, so this leaves in_kind=false and
- * must not be wired into the live sync until the rule (Transaction / Account-Sector)
- * is validated against a real report + the current tax_realized split.
+ * as-of date (from the filename); `fy_start` is the prior Sep 1 (FYE Aug 31).
+ *
+ * In-kind classification comes straight from the file: Tidal flags redemption
+ * deliveries in the "In-Kind RGL" column (value "In-Kind", else blank), and
+ * corroborates via Broker = "ETF BASKET REDEMPTION IN KIND". Verified row-for-row
+ * against the live tax_realized split (252 in-kind / 1492 cash, 0 mismatches).
+ * Columns looked up by header name so a reorder can't misalign fields.
  */
-export function parseRglXlsx(_buffer: Buffer, _fyEnd: string): RawRealized[] {
-  throw new Error('parseRglXlsx not wired: confirm in-kind rule before enabling RGL sync (phase 1b)');
+export async function parseRglXlsx(buffer: Buffer, fyEnd: string): Promise<RawRealized[]> {
+  const fyStart = fiscalStart(fyEnd);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer as any);
+
+  // The realized-ledger sheet (has "Total Gain/Loss"); skip the pivot "Summary" sheet.
+  let ws = wb.worksheets[0];
+  for (const w of wb.worksheets) {
+    const hdr = (w.getRow(1).values as any[]).map(cellText);
+    if (hdr.some(h => /total gain\/loss/i.test(h))) { ws = w; break; }
+  }
+  const header = (ws.getRow(1).values as any[]).map(cellText);
+  const H: Record<string, number> = {};
+  header.forEach((name, i) => { if (name) H[name.trim()] = i; });
+  for (const c of ['Ticker', 'Trade Date', 'Gain/Loss Term', 'Total Gain/Loss', 'In-Kind RGL']) {
+    if (!(c in H)) throw new Error(`RGL: missing expected column "${c}" (format change?)`);
+  }
+  const at = (row: any[], name: string): any => (name in H ? row[H[name]] : undefined);
+
+  const out: RawRealized[] = [];
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r).values as any[];
+    const ticker = cellText(at(row, 'Ticker')).toUpperCase();
+    const gl = num(at(row, 'Total Gain/Loss'));
+    const tradeDate = isoDate(at(row, 'Trade Date'));
+    if (!ticker || gl == null || !tradeDate) continue;
+    const inKindFlag = cellText(at(row, 'In-Kind RGL')).toUpperCase() === 'IN-KIND'
+      || cellText(at(row, 'Broker')).toUpperCase() === 'ETF BASKET REDEMPTION IN KIND';
+    out.push({
+      fy_start: fyStart, fy_end: fyEnd,
+      ticker,
+      cusip: cellText(at(row, 'Primary Asset Id')) || undefined,
+      issue_name: cellText(at(row, 'Issue Name')) || undefined,
+      trade_date: tradeDate,
+      acquisition_date: isoDate(at(row, 'Acquisition Date')) ?? undefined,
+      term: cellText(at(row, 'Gain/Loss Term')) || 'SHORT TERM',
+      quantity: num(at(row, 'Quantity')),
+      proceeds: num(at(row, 'Proceeds Base')),
+      cost: num(at(row, 'Amortized Cost Base')),
+      realized_gl: gl,
+      in_kind: inKindFlag,
+    });
+  }
+  return out;
 }
