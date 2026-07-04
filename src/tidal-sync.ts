@@ -39,6 +39,9 @@ const RGL_FILE = /RGL.*\.xlsx$/i;
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
   console.log(`\n=== Tidal Sync ${dryRun ? '(dry run)' : ''} ===`);
+  // GHA/Task Scheduler key off the exit code; a POST or parse failure must NOT exit 0
+  // (a green run on a failed ingest is the exact silent-staleness this pipeline prevents).
+  let failures = 0;
 
   const explicit = process.env.MESSAGE_IDS?.trim();
   let messageIds: string[];
@@ -64,14 +67,14 @@ async function main() {
     if (!dl) { console.log(`  ${messageId}: no Position Details .xls, skipping`); continue; }
 
     const snapshot = dateFromFilename(dl.filename);
-    if (!snapshot) { console.error(`  ${messageId}: cannot parse snapshot date from "${dl.filename}", skipping`); continue; }
+    if (!snapshot) { console.error(`  ${messageId}: cannot parse snapshot date from "${dl.filename}", skipping`); failures++; continue; }
 
     let lots, fund;
     try {
       ({ lots, fund } = parsePositionsXls(dl.buffer, snapshot));
     } catch (e) {
       console.error(`  ${messageId}: parse failed for ${dl.filename}:`, e instanceof Error ? e.message : e);
-      continue;
+      failures++; continue;
     }
     const totalMv = lots.reduce((s, l) => s + (l.market_value ?? 0), 0);
     const names = new Set(lots.map(l => l.ticker)).size;
@@ -94,6 +97,7 @@ async function main() {
     const json: any = await res.json().catch(() => ({}));
     if (!res.ok || !json.success) {
       console.error(`  ${messageId}: ingest failed (HTTP ${res.status}): ${JSON.stringify(json)}`);
+      failures++;
     } else {
       console.log(`  ${messageId}: ingested -> snapshot ${json.snapshot_date}, ${json.lots_inserted} lots`);
     }
@@ -113,14 +117,14 @@ async function main() {
       const dl = await downloadAttachment(messageId, RGL_FILE);
       if (!dl) { console.log(`  ${messageId}: no RGL .xlsx, skipping`); continue; }
       const fyEnd = dateFromFilename(dl.filename);
-      if (!fyEnd) { console.error(`  ${messageId}: cannot parse date from "${dl.filename}", skipping`); continue; }
+      if (!fyEnd) { console.error(`  ${messageId}: cannot parse date from "${dl.filename}", skipping`); failures++; continue; }
 
       let realized;
       try {
         realized = await parseRglXlsx(dl.buffer, fyEnd);
       } catch (e) {
         console.error(`  ${messageId}: RGL parse failed for ${dl.filename}:`, e instanceof Error ? e.message : e);
-        continue;
+        failures++; continue;
       }
       const ikSum = realized.filter(r => r.in_kind).reduce((s, r) => s + r.realized_gl, 0);
       const total = realized.reduce((s, r) => s + r.realized_gl, 0);
@@ -141,13 +145,15 @@ async function main() {
         console.log(`  ${messageId}: RGL skipped (stale): ${json.message}`);
       } else if (!res.ok || !json.success) {
         console.error(`  ${messageId}: RGL ingest failed (HTTP ${res.status}): ${JSON.stringify(json)}`);
+        failures++;
       } else {
         console.log(`  ${messageId}: RGL ingested -> fy ${json.fy_start}..${json.fy_end}, ${json.rows_inserted} rows`);
       }
     }
   }
 
-  console.log('Done.');
+  console.log(`Done.${failures ? ` ${failures} failure(s).` : ''}`);
+  if (failures > 0) process.exit(1);  // fail the job so a broken ingest doesn't show green
 }
 
 main().catch(err => { console.error('tidal-sync failed:', err); process.exit(1); });

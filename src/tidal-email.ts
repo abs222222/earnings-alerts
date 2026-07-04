@@ -172,7 +172,7 @@ export function parsePositionsXls(buffer: Buffer, snapshotDate: string): { lots:
       ticker: ticker.toUpperCase(),
       cusip: at(v, 'Security Identifier') ?? undefined,
       issue_name: at(v, 'Issue Name') ?? undefined,
-      acquisition_date: acq ? acq.slice(0, 10) : undefined,
+      acquisition_date: isoDate(acq) ?? undefined,  // normalize M/D/YYYY or ISO, don't blind-slice
       quantity: num(at(v, 'Tax Lot Quantity')),
       unit_cost: num(at(v, 'Tax Lot Unit Cost (Base)')),
       total_cost: num(at(v, 'Tax Lot Total Cost (Base)')),
@@ -182,6 +182,9 @@ export function parsePositionsXls(buffer: Buffer, snapshotDate: string): { lots:
       sec_type: at(v, 'USB Security Type 3') ?? undefined,
     });
   }
+  // Required columns are checked above (fail-loud). A non-empty sheet yielding no lots
+  // means the row shape changed under us — surface it rather than POST an empty snapshot.
+  if (lots.length === 0) console.warn('[tidal] parsePositionsXls: 0 lots parsed from a non-empty sheet — possible format change');
   return { lots, fund };
 }
 
@@ -196,7 +199,8 @@ export type RawRealized = {
 
 function cellText(v: any): string {
   if (v == null) return '';
-  if (typeof v === 'object') return String(v.text ?? v.result ?? '').trim();
+  // ExcelJS: plain string/number, {result} for formulas, or {richText:[{text}]} for styled cells.
+  if (typeof v === 'object') return String(v.text ?? v.result ?? v.richText?.map((r: any) => r.text).join('') ?? '').trim();
   return String(v).trim();
 }
 function isoDate(v: any): string | null {
@@ -238,12 +242,18 @@ export async function parseRglXlsx(buffer: Buffer, fyEnd: string): Promise<RawRe
   const at = (row: any[], name: string): any => (name in H ? row[H[name]] : undefined);
 
   const out: RawRealized[] = [];
+  let dateFails = 0;
   for (let r = 2; r <= ws.rowCount; r++) {
     const row = ws.getRow(r).values as any[];
     const ticker = cellText(at(row, 'Ticker')).toUpperCase();
     const gl = num(at(row, 'Total Gain/Loss'));
     const tradeDate = isoDate(at(row, 'Trade Date'));
-    if (!ticker || gl == null || !tradeDate) continue;
+    if (!ticker || gl == null || !tradeDate) {
+      // A real row (ticker + G/L present) dropped only because the date wouldn't parse is a
+      // silent-data-loss signal — understated realized totals. Blank rows don't count.
+      if (ticker && gl != null && !tradeDate) dateFails++;
+      continue;
+    }
     const inKindFlag = cellText(at(row, 'In-Kind RGL')).toUpperCase() === 'IN-KIND'
       || cellText(at(row, 'Broker')).toUpperCase() === 'ETF BASKET REDEMPTION IN KIND';
     out.push({
@@ -261,5 +271,6 @@ export async function parseRglXlsx(buffer: Buffer, fyEnd: string): Promise<RawRe
       in_kind: inKindFlag,
     });
   }
+  if (dateFails > 0) console.warn(`[tidal] parseRglXlsx: ${dateFails} row(s) dropped on unparseable Trade Date — possible date-format change`);
   return out;
 }
