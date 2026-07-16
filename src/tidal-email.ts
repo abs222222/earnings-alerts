@@ -1,7 +1,7 @@
 /**
  * Tidal Fund-Admin Email Module
  *
- * Reads Tidal's (Nicholas Ohm, nohm@tidalfg.com) fund-admin reports and parses
+ * Reads Tidal's fund-admin reports (from any @tidalfg.com analyst) and parses
  * their attachments for the Kronos tax ingest endpoints:
  *
  *   - "Position Details Report"  -> "Position Details Tax Lots Confidential - M.D.YYYY.xls"
@@ -21,7 +21,12 @@ import { XMLParser } from 'fast-xml-parser';
 import ExcelJS from 'exceljs';
 import { getGmailService } from './google-auth';
 
-const TIDAL_SENDER = 'nohm@tidalfg.com';
+// Match the DOMAIN, not one analyst. Tidal rotates fund-admin senders (Nick
+// nohm@, Lily lwegehaupt@, ...) and the ingest was silently missing any report
+// sent by anyone but Nick (e.g. the 7/10 Position Details from Lily). Gmail's
+// `from:tidalfg.com` matches any of them; the subject + has:attachment filters
+// keep the search scoped to the actual reports.
+const TIDAL_SENDER = 'tidalfg.com';
 
 // ---- ingest payload shapes (mirror the Kronos route contracts) ----
 export type RawLot = {
