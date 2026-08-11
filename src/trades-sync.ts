@@ -9,8 +9,11 @@
  *   npm run trades-sync -- --dry-run   # fetch + parse + print, no POST
  *
  * Env:
- *   INGEST_URL    (default: prod Kronos /api/ideas/ingest-trades)
- *   INGEST_SECRET (required unless --dry-run)
+ *   INGEST_URL     (default: prod Kronos /api/ideas/ingest-trades)
+ *   INGEST_SECRET  (required unless --dry-run)
+ *   DAYS_BACK      (default 7) how far back to search for blotter emails
+ *   ALERT_ON_EMPTY ('true' on the day's last scheduled run) fail instead of
+ *                  exiting 0 when no blotter email was found at all
  *   Gmail OAuth via google_token.json (same as holdings-sync)
  */
 
@@ -32,10 +35,22 @@ async function main() {
     messageIds = explicit.split(',').map(s => s.trim()).filter(Boolean);
     console.log(`Using ${messageIds.length} explicit message id(s).`);
   } else {
-    const daysBack = Number(process.env.DAYS_BACK || 3);
+    // 7 days rather than 3: ingest dedups on fill content, not message id, so
+    // re-reading an already-processed email is a no-op. The wider window means a
+    // multi-day outage (the 2026-08-06 GHA incident ran 10h42m) still self-heals
+    // on the next run instead of dropping those fills for good.
+    const daysBack = Number(process.env.DAYS_BACK || 7);
     messageIds = (await searchTradesEmails(daysBack)).reverse();
   }
   if (messageIds.length === 0) {
+    // Nothing found on the day's LAST scheduled run means no blotter arrived at
+    // all, which is a data gap rather than a clean run. Fail the job so it can't
+    // report green, same reason tidal-sync exits 1 on ingest failures. The 6 PM
+    // run stays quiet because James sometimes sends after it.
+    if (process.env.ALERT_ON_EMPTY === 'true') {
+      console.error('No trades emails found on the last run of the day. No blotter arrived; trade_fills has a gap for this session.');
+      process.exit(1);
+    }
     console.log('No trades emails found.');
     return;
   }
