@@ -63,13 +63,15 @@ async function main() {
   }
 
   let totalFills = 0;
+  let failures = 0;
   for (const messageId of messageIds) {
     const buf = await downloadXlsxAttachment(messageId);
-    if (!buf) { console.log(`  ${messageId}: no xlsx, skipping`); continue; }
+    if (!buf) { console.error(`  ${messageId}: no xlsx, skipping`); failures++; continue; }
     const fills = await parseTradesXlsx(buf);
     console.log(`  ${messageId}: parsed ${fills.length} fills`);
     if (fills.length === 0) {
-      console.warn(`  ${messageId}: downloaded a workbook but parsed 0 fills — possible blotter format change (check parser error above)`);
+      console.error(`  ${messageId}: downloaded a workbook but parsed 0 fills — possible blotter format change (check parser error above)`);
+      failures++;
       continue;
     }
     totalFills += fills.length;
@@ -90,6 +92,7 @@ async function main() {
     const json: any = await res.json().catch(() => ({}));
     if (!res.ok || !json.success) {
       console.error(`  ${messageId}: ingest failed (HTTP ${res.status}): ${JSON.stringify(json)}`);
+      failures++;
     } else {
       console.log(`  ${messageId}: ingested ->`, JSON.stringify({
         received: json.received, new_fills: json.new_fills, skipped: json.skipped?.length ?? 0,
@@ -99,7 +102,12 @@ async function main() {
     }
   }
 
-  console.log(`Done. ${totalFills} fills across ${messageIds.length} email(s).`);
+  console.log(`Done. ${totalFills} fills parsed across ${messageIds.length} email(s).` +
+    `${failures ? ` ${failures} FAILED to ingest.` : ''}`);
+  // Parsing is not ingesting. Five 401s from the Kronos endpoint on 2026-08-11
+  // still printed "Done. 36 fills" and exited 0, so the workflow was green while
+  // trade_fills received nothing. Fail the job like tidal-sync does.
+  if (failures > 0) process.exit(1);
 }
 
 main().catch(err => { console.error('trades-sync failed:', err); process.exit(1); });
