@@ -41,6 +41,11 @@ jobs:
           NODE_ENV: production
           INGEST_URL: ${{ secrets.INGEST_URL }}
           INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          # Only the day's last scheduled run treats "no blotter email" as a
+          # failure. The 22:00 run finding nothing is normal when James sends
+          # late; the 23:30 run finding nothing means the session is missing.
+          # Empty on workflow_dispatch, so manual runs never fail on empty.
+          ALERT_ON_EMPTY: ${{ github.event.schedule == '30 23 * * 1-5' }}
 
       - name: Cleanup credentials
         if: always()
